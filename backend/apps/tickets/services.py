@@ -69,7 +69,8 @@ def _display(value):
     if hasattr(value, "isoformat"):
         return value.isoformat()
     if hasattr(value, "pk"):
-        return {"id": str(value.pk), "label": str(value)}
+        # Users are labelled by name (str() of a user is their email).
+        return {"id": str(value.pk), "label": getattr(value, "full_name", None) or str(value)}
     return str(value)
 
 

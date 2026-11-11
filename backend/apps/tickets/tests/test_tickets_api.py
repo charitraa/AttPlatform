@@ -324,3 +324,10 @@ def test_portal_user_customer_is_resolved_automatically(client_for, portal_user,
 def test_staff_must_choose_customer(client_for, agent):
     r = client_for(agent).post(URL, {"title": "t", "description": "d"}, format="json")
     assert r.status_code == 400 and "customer" in r.json()["error"]["details"]
+
+
+def test_assignment_history_labels_people_by_name(create_ticket, client_for, admin, agent):
+    ticket = create_ticket()
+    client_for(admin).post(url(ticket["id"], "assign/"), {"agent": str(agent.user.id)}, format="json")
+    entry = TicketHistory.objects.get(ticket_id=ticket["id"], event="assigned")
+    assert entry.new_value["label"] == agent.user.full_name

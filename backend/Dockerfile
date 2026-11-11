@@ -11,6 +11,9 @@ RUN apt-get update \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app && useradd --system --gid app --home /app app
 WORKDIR /app
+# Upload directory owned by the runtime user. A fresh named volume mounted here
+# inherits this ownership; without it uploads fail with PermissionError.
+RUN mkdir -p /app/media && chown app:app /app/media
 
 # ---- development: dev dependencies, source mounted as a volume ----
 FROM base AS dev

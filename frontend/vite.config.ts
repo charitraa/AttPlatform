@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
             groups: [
               { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/ },
               { name: 'vendor-ui', test: /node_modules[\\/](@base-ui|@floating-ui|lucide-react|sonner)[\\/]/ },
+              { name: 'vendor-charts', test: /node_modules[\\/](recharts|d3-[a-z-]+|victory-vendor|es-toolkit|decimal.js-light)[\\/]/ },
               { name: 'vendor-data', test: /node_modules[\\/](@tanstack|zod|zustand|react-hook-form|@hookform)[\\/]/ },
             ],
           },

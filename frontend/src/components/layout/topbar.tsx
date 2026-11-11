@@ -1,11 +1,14 @@
 import { Bell, Menu, Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { StatusDot } from '@/components/common/status-indicator'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useMeta, useReadiness } from '@/lib/api/system'
+import { STATUSES } from '@/features/tickets/constants'
+import { useCan } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 import { Brand, NavList } from './sidebar'
 import { ThemeMenu } from './theme-menu'
@@ -19,6 +22,23 @@ function ConnectionBadge() {
     <Link to="/system" className="hidden items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted lg:flex">
       <StatusDot health={health} /> {label}
     </Link>
+  )
+}
+
+function GlobalSearch() {
+  const navigate = useNavigate()
+  const seesAll = useCan('tickets.view_all')
+  const seesOwn = useCan('tickets.view_own')
+  const canSearch = seesAll || seesOwn
+  const [term, setTerm] = useState('')
+  if (!canSearch) return <div className="flex-1" />
+  return (
+    <form role="search" className="relative max-w-md flex-1"
+      onSubmit={(e) => { e.preventDefault(); if (term.trim()) navigate(`/tickets?status=${STATUSES.join(',')}&search=${encodeURIComponent(term.trim())}`) }}>
+      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      <Input type="search" aria-label="Search tickets" placeholder="Search tickets or TCK number…" className="pl-8"
+        value={term} onChange={(e) => setTerm(e.target.value)} />
+    </form>
   )
 }
 
@@ -40,18 +60,7 @@ export function Topbar() {
         </SheetContent>
       </Sheet>
 
-      {/* Global search is wired to the backend search API with ticketing (Phase 3). */}
-      <div className="relative max-w-md flex-1">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <Input
-          type="search"
-          disabled
-          aria-label="Global search"
-          placeholder="Search tickets, customers, assets…"
-          title="Global search becomes available with the ticketing module"
-          className="pl-8"
-        />
-      </div>
+      <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-1">
         {meta?.ai_mock_mode && (

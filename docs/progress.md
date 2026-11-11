@@ -148,12 +148,86 @@
   (registration is off by default).
 - The authenticated WebSocket (`/ws/events/`) arrives with notifications in Phase 6.
 
-## Phase 3 — Ticketing engine (next)
+## Phase 3 — Ticketing engine ✅ (2026-11-11)
 
-Customers, contacts and assets (base); ticket categories; tickets with an
-org-scoped number, explicit status state machine, priority with `priority_source`,
-assignment history; comments vs internal notes (visibility enforced per role);
-secure attachments (size and MIME allow-list, content sniffing, authenticated
-download); field-level history plus audit; search/filter/sort/pagination; archive;
-dashboard KPIs computed from real data. Frontend: tickets table, ticket detail with
-timeline, create ticket form, customers pages, dashboard charts, global search.
+### Completed
+
+**Backend**
+- `apps.customers`: customers (tier, type, address, archive/restore; active names unique
+  per org) and contacts (one primary; linking a user grants portal access).
+- `apps.assets`: assets and categories (org-unique tags, warranty, `Decimal` cost +
+  currency, deletion blocked once tickets reference an asset).
+- `apps.tickets`:
+  - Per-org sequential references (`TCK-000042`) via a row-locked `OrganizationSequence`.
+  - Status state machine (`lifecycle.py`); customers may only confirm or reopen a resolution.
+  - Resolution notes required to resolve; lifecycle timestamps (`first_response_at`,
+    `resolved_at`, `closed_at`, `customer_confirmed_at`).
+  - Assignment with role/org validation and assignment history; auto-move to Assigned.
+  - Public replies vs internal notes. A customer reply on `pending_customer` returns the
+    ticket to the team.
+  - Field-level `TicketHistory` (append-only) plus `AuditLog` on every mutation;
+    domain events (`ticket.created|updated|status_changed|assigned|commented`) for
+    AI/SLA/notifications.
+  - Row-level visibility: all / technician-own / customer-account. Other tenants get 404.
+  - Search (Postgres full text with GIN expression index, ticket-number lookup,
+    partial title/customer), filters, severity-aware ordering, archive.
+  - Attachments: size limit, extension allow-list, libmagic content check, random
+    storage names, SHA-256, authenticated download with `nosniff` + sandbox CSP.
+- `apps.analytics`: dashboard summary, trends (org-timezone buckets), breakdowns,
+  agent workload, recent activity. Metrics of unbuilt modules are `null` with a reason.
+- `seed_tickets`: realistic demo data through the real services.
+
+**Frontend**
+- Dashboard: KPI tiles linking to filtered lists, "not available yet" tiles for SLA
+  and field-service metrics, created-vs-resolved line chart (colours validated with the
+  dataviz palette checker in both themes, single axis, crosshair tooltip, table view),
+  priority/status/category bar lists, recent tickets, activity feed, agent workload.
+- Tickets list: filters and sorting in the URL, debounced search, pagination.
+- Create ticket: dependent customer → contact/asset selects, category default
+  priority hint; simplified form for portal customers.
+- Ticket detail: status actions (with resolution and internal notes), assign,
+  escalate, edit, archive; conversation with internal-note composer; attachments
+  upload and authenticated download; activity timeline; details and dates.
+- Customers list/detail (contacts CRUD, assets, tickets), Assets list with
+  create/edit, global search in the top bar.
+- Chart library split into its own cacheable chunk.
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest (local + Docker) | **144 passed**. New: ticket creation and numbering, cross-tenant references, portal rules, visibility matrix, filters/search/ordering, field history, state machine, customer confirm/reopen, escalation, assignment validation and history, internal notes isolation, first response, customer reply side effect, archiving, categories, attachments (round trip, disguised executable, SVG, empty, size, internal visibility, cross-org), customers, contacts, assets, dashboard metrics and visibility |
+| Frontend Vitest | **60 passed**. New: ticket list filters → URL/request, create-ticket validation + payload (staff and portal), detail (timeline, internal note, resolve with server error, customer view), dashboard (values, unavailable metrics, table view, period, role-based workload), customers (create, validation, duplicate error, read-only) |
+| Lint / type-check / build | clean |
+| Headless Chromium walkthrough (Docker stack) | dashboard → filtered list → assign agent + technician → internal note → upload → download → resolve → create ticket → customer page → assets → global search; portal customer is refused another customer's ticket and sees only their own tickets |
+
+### Bugs found and fixed during verification
+- **Uploads failed in Docker** (`PermissionError` on `/app/media`): the named volume was
+  root-owned while the app runs unprivileged. The image now creates the directory
+  owned by `app`. **Existing volumes need a one-time fix:**
+  `docker compose exec -u root backend chown -R app:app /app/media`. Unit tests use
+  in-memory storage, so only the end-to-end run could catch this.
+- Archived tickets returned 404 on their own detail page (DRF applies list filters
+  inside `get_object`).
+- Customer create/update responses lacked computed counts.
+- Portal customers couldn't raise tickets without knowing their customer ID.
+- Ticket history labelled people by email instead of name.
+
+### Known gaps carried forward
+- Customer pickers load the first 100 customers alphabetically; an async searchable
+  combobox is needed for large customer bases.
+- `due_at` is only set by demo data until SLA policies arrive (Phase 6); the
+  "Overdue" figures therefore reflect seeded deadlines.
+- No hard delete of tickets through the API (by design); the Django admin remains
+  available to Super Admins.
+- Ticket category management UI isn't built yet (the API exists).
+
+## Phase 4 — AI engine (next)
+
+Provider abstraction (mock, Anthropic, OpenAI-compatible) with retries, timeouts,
+schema validation and a circuit breaker; `AIAnalysis` / `AIRecommendation` storage
+with confidence and reasoning; Celery `ai` queue triggered by `ticket.created`;
+classification, priority prediction, summarisation, hybrid routing (deterministic
+scoring + LLM explanation), response suggestions, knowledge base with review flow
+and assistant, insights. Frontend: AI panel on the ticket (accept/override),
+AI Assistant and AI Insights pages, clear "Demo AI" labelling in mock mode.

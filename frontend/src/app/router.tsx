@@ -21,6 +21,11 @@ const UsersPage = named(() => import('@/features/users/users-page'), 'UsersPage'
 const OrganizationSettingsPage = named(() => import('@/features/settings/organization-settings-page'), 'OrganizationSettingsPage')
 const TicketsPage = named(() => import('@/features/tickets/tickets-page'), 'TicketsPage')
 const CreateTicketPage = named(() => import('@/features/tickets/create-ticket-page'), 'CreateTicketPage')
+const TicketDetailPage = named(() => import('@/features/tickets/ticket-detail-page'), 'TicketDetailPage')
+const DashboardPage = named(() => import('@/features/dashboard/dashboard-page'), 'DashboardPage')
+const CustomersPage = named(() => import('@/features/customers/customers-page'), 'CustomersPage')
+const CustomerDetailPage = named(() => import('@/features/customers/customer-detail-page'), 'CustomerDetailPage')
+const AssetsPage = named(() => import('@/features/assets/assets-page'), 'AssetsPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -29,7 +34,10 @@ const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</
 // explicit "ships in Phase N" page until that phase replaces it.
 const implemented: Record<string, ReactNode> = {
   '/system': <SystemStatusPage />,
+  '/': <DashboardPage />,
   '/tickets': <TicketsPage />,
+  '/customers': <CustomersPage />,
+  '/assets': <AssetsPage />,
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }
@@ -64,6 +72,14 @@ export const routes: RouteObject[] = [
                 ),
               })),
               { path: 'settings/profile', element: page(<ProfileSettingsPage />) },
+              {
+                path: 'tickets/:id',
+                element: <RequirePermission anyOf={['tickets.view_all', 'tickets.view_own']}>{page(<TicketDetailPage />)}</RequirePermission>,
+              },
+              {
+                path: 'customers/:id',
+                element: <RequirePermission anyOf={['customers.view']}>{page(<CustomerDetailPage />)}</RequirePermission>,
+              },
               {
                 path: 'tickets/new',
                 element: <RequirePermission anyOf={['tickets.create']}>{page(<CreateTicketPage />)}</RequirePermission>,

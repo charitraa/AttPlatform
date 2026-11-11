@@ -4,7 +4,7 @@ AI-driven ticketing and field service management platform: a modular-monolith
 Django backend, a React + TypeScript frontend, PostgreSQL, Redis, Celery,
 Django Channels, and a provider-independent AI engine.
 
-> **Status:** Phase 2 (identity, organizations, RBAC) complete. See [`docs/progress.md`](docs/progress.md)
+> **Status:** Phase 3 (ticketing engine) complete. See [`docs/progress.md`](docs/progress.md)
 > and [`docs/development-roadmap.md`](docs/development-roadmap.md).
 
 ## Repository layout
@@ -45,6 +45,7 @@ Source is mounted into the containers, so edits reload live.
 
 ```bash
 docker compose exec backend python manage.py seed_demo      # demo organizations + one user per role
+docker compose exec backend python manage.py seed_tickets   # demo customers, assets and 40 tickets (Acme)
 docker compose exec backend pytest
 docker compose logs -f worker
 docker compose down          # stop (data kept in volumes)
@@ -75,6 +76,7 @@ uv venv --python 3.13 .venv && uv pip install -r requirements/dev.txt
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py runserver            # http://localhost:8000 (ASGI via daphne)
 .venv/bin/python manage.py seed_demo            # demo users (see below)
+.venv/bin/python manage.py seed_tickets         # demo customers, assets and tickets
 .venv/bin/celery -A config worker -l info -Q default,ai,notifications,webhooks,sla   # separate terminal
 .venv/bin/celery -A config beat -l info         # separate terminal
 ```
@@ -102,6 +104,11 @@ pnpm dev        # http://localhost:5173; proxies /api and /ws to localhost:8000
 | tech@acme.test | Acme Facilities | Field Technician |
 | customer@acme.test | Acme Facilities | Customer |
 | admin@globex.test | Globex Services | Organization Admin (second tenant, for isolation checks) |
+
+`seed_tickets` adds six customers, about 25 assets, seven categories and 40 tickets in
+mixed states over the last 30 days. They are created through the real services, so
+history and audit entries are genuine. It links `customer@acme.test` to the first
+customer for the portal view.
 
 In development, emails (invitations, password resets) are printed to the
 **worker** log: `docker compose logs -f worker`.

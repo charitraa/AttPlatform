@@ -25,7 +25,7 @@ export const navigation: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { label: 'Dashboard', to: '/', icon: Gauge, phase: 3, summary: 'Ticket, SLA and technician KPIs computed by the backend.' },
+      { label: 'Dashboard', to: '/', icon: Gauge, phase: 3, summary: 'Ticket, SLA and technician KPIs computed by the backend.', permissions: ['tickets.view_all', 'tickets.view_own'] },
       { label: 'Analytics', to: '/analytics', icon: BarChart3, phase: 7, summary: 'Performance, SLA compliance and AI accuracy reports with CSV export.', permissions: ['analytics.view'] },
     ],
   },

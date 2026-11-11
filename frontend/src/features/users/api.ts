@@ -46,6 +46,7 @@ export interface MemberFilters {
   role?: string
   is_active?: string
   page?: number
+  page_size?: number
 }
 
 export const usersKeys = {

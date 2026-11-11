@@ -118,24 +118,48 @@ token is never present in a response body.
 | GET | `/roles/` | `roles.view` | System roles with permission codes and `assignable` (whether the caller may grant it). |
 | GET | `/audit-logs/` | `audit.view` | Org-scoped audit trail. Filters: `action` (prefix), `actor`, `target_type`, `target_id`, `created_after`, `created_before`. |
 
-### Dashboard (Phase 2 shell, metrics from Phase 3+)
-| GET | `/dashboard/summary/` | KPI tiles |
-| GET | `/dashboard/trends/?period=30d` | Ticket trend series |
-| GET | `/dashboard/activity/` | Recent activity |
+### Dashboard (Phase 3 ✅)
+All dashboard figures are computed from the tickets the caller can see (`tickets.view_all`
+or `tickets.view_own`). `?days=` is clamped to 7–180 (default 30).
 
-### Tickets (Phase 3)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/tickets/` | List (filter/search/sort/paginate) / create |
-| GET/PATCH | `/tickets/{id}/` | Detail / edit |
-| POST | `/tickets/{id}/archive/` | Archive (permission-gated) |
-| POST | `/tickets/{id}/transition/` | `{ "status": "in_progress", "note": "…" }` — state machine |
-| POST | `/tickets/{id}/assign/` | Assign agent / technician |
-| POST | `/tickets/{id}/escalate/` | Manual escalation |
-| GET/POST | `/tickets/{id}/comments/` | Public comments & internal notes |
-| GET/POST | `/tickets/{id}/attachments/` | Multipart upload |
-| GET | `/tickets/{id}/history/` | Audit trail / timeline |
-| GET/POST | `/ticket-categories/` | Category tree |
+| GET | `/dashboard/summary/` | Counts (total, open, new, in progress, resolved, closed, overdue, critical open, unassigned open, created/resolved in period) and average resolution / first-response hours. Metrics owned by unbuilt modules (`sla_compliance`, `technicians_available`, `active_work_orders`) are `null`, with the reason in `unavailable`. |
+| GET | `/dashboard/trends/` | One row per day `{date, created, resolved}`, bucketed in the organization's timezone. |
+| GET | `/dashboard/breakdown/` | Status counts, open tickets by priority, top 8 categories. |
+| GET | `/dashboard/workload/` | Per-agent open / resolved / average resolution (`tickets.view_all`). |
+| GET | `/dashboard/activity/` | Latest 15 history events (internal events hidden from customers). |
+
+### Tickets (Phase 3 ✅)
+
+**Visibility:** `tickets.view_all` sees every ticket in the organization. Technicians
+(`tickets.view_own`) see tickets assigned to them or raised by them. Customer-portal
+users see their customer account's tickets. Anything else returns 404. Internal notes,
+internal attachments and internal history events need `tickets.internal_notes`.
+
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET | `/tickets/` | view | Filters: `status` (comma list or `active`), `priority` (comma list), `category`, `customer`, `asset`, `assigned_agent` / `assigned_technician` (user ID, `me`, `none`), `created_after`, `created_before`, `overdue`, `tag`, `archived` (`false` default, `true`, `all`). `search`: full text over title + description, partial title or customer name, or a ticket number (`TCK-42`, `42`). `ordering`: `created_at`, `updated_at`, `due_at`, `number`, `status`, `priority` (by severity). |
+| POST | `/tickets/` | `tickets.create` | `{title, description, customer, contact?, asset?, category?, priority?, channel?, tags?}`. Contact and asset must belong to the customer. Customer-portal users may omit `customer` (their linked account is used); their `priority` is ignored in favour of the category default. |
+| GET / PATCH | `/tickets/{id}/` | view / `tickets.update` | PATCH: `title`, `description`, `priority`, `category`, `contact`, `asset`, `tags`. Every changed field is written to history; a priority change sets `priority_source=manual`. Detail includes `allowed_transitions` and `capabilities` for the caller. |
+| POST | `/tickets/{id}/transition/` | `tickets.update` (customers: `portal.access`) | `{status, note?, resolution_notes?}`. Checked against the state machine (`apps/tickets/lifecycle.py`); otherwise 400 `invalid_transition`. `resolved` requires resolution notes. Customers may only move `resolved` → `closed` (confirms the resolution) or `reopened`. |
+| POST | `/tickets/{id}/assign/` | `tickets.assign` | `{agent?, technician?}`: omit to leave unchanged, `null` to unassign. Agents must hold an agent-capable role and technicians the technician role, in this organization. Assigning an agent moves `new`/`open`/`reopened` tickets to `assigned`. |
+| POST | `/tickets/{id}/escalate/` | `tickets.update` | `{reason}`, recorded as an internal note. |
+| POST | `/tickets/{id}/archive/` · `/unarchive/` | `tickets.archive` | Archived tickets are hidden from lists and frozen. Tickets are never hard-deleted through the API. |
+| GET / POST | `/tickets/{id}/comments/` | view | `{body, visibility: public\|internal}`. The first public staff reply sets `first_response_at`; a customer reply on `pending_customer` moves the ticket back to the team. |
+| GET / POST | `/tickets/{id}/attachments/` | view | Multipart `file` + `visibility`. Up to `MAX_UPLOAD_SIZE_MB`; extension allow-list; content sniffed with libmagic and must match the extension; SVG and executables rejected. |
+| GET | `/tickets/{id}/attachments/{aid}/download/` | view | Authenticated stream with `Content-Disposition: attachment` (`?inline=1` allowed only for PNG/JPEG/WebP/GIF), `nosniff` and a sandboxing CSP. |
+| GET | `/tickets/{id}/history/` | view | Field-level timeline. |
+| GET / POST / PATCH / DELETE | `/ticket-categories/` | read: `organization.view`; write: `organization.manage` | Deleting a category that's in use deactivates it instead. |
+
+### Customers & assets (Phase 3 ✅)
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET / POST / PATCH | `/customers/` | `customers.view` / `customers.manage` | Search: name, email, phone, city, contact name/email. Filters: `type`, `tier`, `archived`. Includes `open_ticket_count`, `asset_count`, `primary_contact`. Active names are unique per organization (case-insensitive). |
+| DELETE / POST `restore/` | `/customers/{id}/` | `customers.manage` | DELETE archives; restore un-archives. |
+| GET / POST / PATCH / DELETE | `/customers/{id}/contacts/` | same | Setting `is_primary` clears the previous primary contact. |
+| GET / POST / PATCH / DELETE | `/assets/` | `assets.view` / `assets.manage` | Filters: `customer`, `category`, `status`, `warranty` (`active`/`expired`). Tags are upper-cased and unique per organization. Assets that have tickets can't be deleted (409); retire them instead. |
+| GET / POST | `/asset-categories/` | same | |
 
 ### AI (Phase 4)
 | Method | Path | Description |
@@ -163,9 +187,8 @@ token is never present in a response body.
 `/notifications/`, `/notifications/{id}/read/`, `/notifications/read-all/`,
 `/notifications/preferences/`. WebSocket: `/ws/events/?token=<access>`.
 
-### Customers, assets, integrations, analytics, portal (Phase 3/5/7)
-`/customers/`, `/customers/{id}/contacts/`, `/customers/{id}/tickets/`,
-`/assets/`, `/assets/{id}/service-records/`, `/integrations/`,
+### Integrations, analytics, portal (Phase 5/7)
+`/assets/{id}/service-records/`, `/integrations/`,
 `/integrations/{id}/test/`, `/integrations/{id}/logs/`,
 `/webhooks/inbound/{integration_id}/` (signature-verified, unauthenticated),
 `/analytics/{report}/?from=&to=&format=csv`,

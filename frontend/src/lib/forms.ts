@@ -24,3 +24,15 @@ export function applyServerErrors<T extends FieldValues>(
   }
   return error.message
 }
+
+/** A single readable message for compact UIs: the first field error, else the error message. */
+export function firstErrorMessage(error: unknown, fallback = 'Something went wrong.'): string {
+  if (!(error instanceof ApiError)) return fallback
+  if (error.details && typeof error.details === 'object' && !Array.isArray(error.details)) {
+    for (const [field, value] of Object.entries(error.details as Record<string, unknown>)) {
+      const msg = Array.isArray(value) ? value[0] : value
+      if (msg) return field === 'non_field_errors' ? String(msg) : `${field.replaceAll('_', ' ')}: ${String(msg)}`
+    }
+  }
+  return error.message
+}
