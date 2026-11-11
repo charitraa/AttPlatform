@@ -19,6 +19,8 @@ const AcceptInvitePage = named(() => import('@/features/auth/accept-invite-page'
 const SystemStatusPage = named(() => import('@/features/system/system-status-page'), 'SystemStatusPage')
 const UsersPage = named(() => import('@/features/users/users-page'), 'UsersPage')
 const OrganizationSettingsPage = named(() => import('@/features/settings/organization-settings-page'), 'OrganizationSettingsPage')
+const TicketsPage = named(() => import('@/features/tickets/tickets-page'), 'TicketsPage')
+const CreateTicketPage = named(() => import('@/features/tickets/create-ticket-page'), 'CreateTicketPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -27,6 +29,7 @@ const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</
 // explicit "ships in Phase N" page until that phase replaces it.
 const implemented: Record<string, ReactNode> = {
   '/system': <SystemStatusPage />,
+  '/tickets': <TicketsPage />,
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }
@@ -61,6 +64,10 @@ export const routes: RouteObject[] = [
                 ),
               })),
               { path: 'settings/profile', element: page(<ProfileSettingsPage />) },
+              {
+                path: 'tickets/new',
+                element: <RequirePermission anyOf={['tickets.create']}>{page(<CreateTicketPage />)}</RequirePermission>,
+              },
               { path: '*', element: <NotFoundPage /> },
             ],
           },

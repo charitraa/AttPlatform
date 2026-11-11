@@ -6,6 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+    --color-series-1: var(--series-1);
+    --color-series-2: var(--series-2);
     --color-success: var(--success);
     --color-warning: var(--warning);
     --font-heading: var(--font-sans);
@@ -77,6 +79,8 @@
     --radius: 0.5rem;
     --success: oklch(0.6 0.15 150);
     --warning: oklch(0.72 0.15 70);
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.49 0.17 258);
@@ -121,6 +125,8 @@
     --sidebar-ring: oklch(0.556 0 0);
     --success: oklch(0.7 0.15 150);
     --warning: oklch(0.8 0.14 75);
+    --series-1: #3987e5;
+    --series-2: #d95926;
 }
 
 @layer base {

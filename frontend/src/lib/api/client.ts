@@ -120,3 +120,24 @@ export const api = {
   patch: <T>(path: string, body?: unknown, options?: RequestOptions<T>) => apiRequest<T>(path, { ...options, method: 'PATCH', body }),
   delete: <T>(path: string, options?: RequestOptions<T>) => apiRequest<T>(path, { ...options, method: 'DELETE' }),
 }
+
+/** Authenticated binary fetch (attachments). Retries once after a token refresh, like apiRequest. */
+export async function apiBlob(url: string, retried = false): Promise<Blob> {
+  const token = getAccessToken()
+  // Server-provided paths look like /api/v1/...; resolve them against the configured API origin.
+  const absolute = url.startsWith('/api/') ? env.apiBaseUrl.replace(/\/api\/v1\/?$/, '') + url : url
+  const response = await fetch(absolute, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (response.status === 401 && token && !retried && (await refreshOnce())) return apiBlob(url, true)
+  if (!response.ok) throw new ApiError(response.status, 'download_failed', 'The file could not be downloaded.')
+  return response.blob()
+}
+
+/** Save a blob through a temporary object URL. */
+export function saveBlob(blob: Blob, filename: string) {
+  const href = URL.createObjectURL(blob)
+  const a = Object.assign(document.createElement('a'), { href, download: filename })
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(href), 1000)
+}

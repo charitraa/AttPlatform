@@ -151,3 +151,21 @@ class Invitation(BaseModel):
         if self.expires_at <= timezone.now():
             return "expired"
         return "pending"
+
+
+class OrganizationSequence(models.Model):
+    """
+    Per-organization counters for human-readable references (TCK-000042, WO-000007).
+    Incremented with SELECT ... FOR UPDATE inside the creating transaction, so
+    concurrent creates never get the same number.
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    key = models.CharField(max_length=32)
+    value = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("organization", "key"), name="uniq_org_sequence")]
+
+    def __str__(self) -> str:
+        return f"{self.organization_id}:{self.key}={self.value}"

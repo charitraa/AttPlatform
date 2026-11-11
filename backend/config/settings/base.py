@@ -55,6 +55,10 @@ LOCAL_APPS = [
     "apps.accounts",
     "apps.organizations",
     "apps.audit",
+    "apps.customers",
+    "apps.assets",
+    "apps.tickets",
+    "apps.analytics",
 ]
 AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

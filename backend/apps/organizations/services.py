@@ -282,3 +282,15 @@ def accept_invitation(*, token: str, password: str, first_name: str = "", last_n
     audit.record("invitation.accepted", request=request, actor=user, organization=invitation.organization,
                  target=invitation)
     return user, membership
+
+
+# ----------------------------------------------------------------------- sequences
+def next_sequence_value(organization: Organization, key: str) -> int:
+    """Must be called inside a transaction; the row lock is held until commit."""
+    from .models import OrganizationSequence
+
+    OrganizationSequence.objects.get_or_create(organization=organization, key=key)
+    seq = OrganizationSequence.objects.select_for_update().get(organization=organization, key=key)
+    seq.value += 1
+    seq.save(update_fields=["value"])
+    return seq.value

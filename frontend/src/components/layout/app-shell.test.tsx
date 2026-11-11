@@ -7,9 +7,9 @@ import { useThemeStore } from '@/stores/theme'
 
 describe('App shell', () => {
   it('renders navigation and an honest placeholder for unbuilt modules', async () => {
-    renderRoute('/tickets', { user: makeMe() })
-    expect(screen.getAllByRole('link', { name: /tickets/i }).length).toBeGreaterThan(0)
-    expect(await screen.findByText('Tickets ships in Phase 3')).toBeInTheDocument()
+    renderRoute('/analytics', { user: makeMe() })
+    expect(screen.getAllByRole('link', { name: /analytics/i }).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Analytics ships in Phase 7')).toBeInTheDocument()
   })
 
   it('collapses and expands the sidebar, persisting the choice', async () => {
