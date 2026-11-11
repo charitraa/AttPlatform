@@ -102,7 +102,9 @@ services:
   nginx:
     image: nginx:1.27-alpine
     volumes:
-      - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount the directory, not the file: editors that save atomically replace the
+      # file's inode, which a single-file bind mount would never see.
+      - ./infrastructure/nginx:/etc/nginx/conf.d:ro
     ports:
       - "${NGINX_PORT:-8080}:80"
     depends_on:
