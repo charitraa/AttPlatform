@@ -70,3 +70,28 @@ def test_openapi_schema_is_generated(api_client):
     paths = response.json()["paths"]
     assert "/api/v1/health/" in paths
     assert "/api/v1/meta/" in paths
+
+
+def test_clients_behind_proxy_get_separate_throttle_buckets(api_client, settings):
+    """Regression: behind nginx every request has the proxy's REMOTE_ADDR."""
+    from django.core.cache import cache
+    from rest_framework.settings import api_settings
+    from rest_framework.throttling import ScopedRateThrottle
+
+    settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "NUM_PROXIES": 1,
+                               "DEFAULT_THROTTLE_RATES": {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
+                                                          "system": "2/min"}}
+    api_settings.reload()
+    ScopedRateThrottle.THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
+    cache.clear()
+    try:
+        url = reverse("health")
+        proxy = {"REMOTE_ADDR": "172.19.0.6"}
+        a = [api_client.get(url, HTTP_X_FORWARDED_FOR="203.0.113.1", **proxy).status_code for _ in range(3)]
+        b = api_client.get(url, HTTP_X_FORWARDED_FOR="198.51.100.7", **proxy).status_code
+        assert a == [200, 200, 429]
+        assert b == 200  # a different client is not affected by the first one's limit
+    finally:
+        settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK}
+        api_settings.reload()
+        ScopedRateThrottle.THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES

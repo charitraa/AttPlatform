@@ -17,7 +17,7 @@ export function ModulePage({ item }: { item: NavItem }) {
         icon={Construction}
         title={`${item.label} ships in Phase ${item.phase}`}
         description="This module isn't implemented yet. No placeholder data is shown, so nothing here can be mistaken for real figures."
-        action={<Button variant="outline" size="sm" render={<Link to="/system" />}>View system status</Button>}
+        action={<Button variant="outline" size="sm" nativeButton={false} render={<Link to="/system" />}>View system status</Button>}
       />
     </div>
   )

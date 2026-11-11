@@ -4,7 +4,7 @@ AI-driven ticketing and field service management platform: a modular-monolith
 Django backend, a React + TypeScript frontend, PostgreSQL, Redis, Celery,
 Django Channels, and a provider-independent AI engine.
 
-> **Status:** Phase 1 (foundation) complete. See [`docs/progress.md`](docs/progress.md)
+> **Status:** Phase 2 (identity, organizations, RBAC) complete. See [`docs/progress.md`](docs/progress.md)
 > and [`docs/development-roadmap.md`](docs/development-roadmap.md).
 
 ## Repository layout
@@ -44,7 +44,7 @@ start), `worker` (Celery), `beat` (Celery beat), `frontend` (Vite with HMR), `ng
 Source is mounted into the containers, so edits reload live.
 
 ```bash
-docker compose exec backend python manage.py createsuperuser
+docker compose exec backend python manage.py seed_demo      # demo organizations + one user per role
 docker compose exec backend pytest
 docker compose logs -f worker
 docker compose down          # stop (data kept in volumes)
@@ -74,7 +74,8 @@ cd backend
 uv venv --python 3.13 .venv && uv pip install -r requirements/dev.txt
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py runserver            # http://localhost:8000 (ASGI via daphne)
-.venv/bin/celery -A config worker -l info       # separate terminal
+.venv/bin/python manage.py seed_demo            # demo users (see below)
+.venv/bin/celery -A config worker -l info -Q default,ai,notifications,webhooks,sla   # separate terminal
 .venv/bin/celery -A config beat -l info         # separate terminal
 ```
 
@@ -85,6 +86,25 @@ cd frontend
 pnpm install
 pnpm dev        # http://localhost:5173; proxies /api and /ws to localhost:8000
 ```
+
+## Demo accounts
+
+`python manage.py seed_demo` creates two organizations and one user per role
+(password `Demo!Pass2026`, or pass `--password`). It refuses to run when
+`ENVIRONMENT=production`.
+
+| Email | Organization | Role |
+|-------|--------------|------|
+| superadmin@att.local | Acme Facilities | Super Admin (also Django admin) |
+| admin@acme.test | Acme Facilities | Organization Admin |
+| ops@acme.test | Acme Facilities | Operations Manager |
+| agent@acme.test | Acme Facilities | Support Agent |
+| tech@acme.test | Acme Facilities | Field Technician |
+| customer@acme.test | Acme Facilities | Customer |
+| admin@globex.test | Globex Services | Organization Admin (second tenant, for isolation checks) |
+
+In development, emails (invitations, password resets) are printed to the
+**worker** log: `docker compose logs -f worker`.
 
 ## Testing
 
@@ -109,6 +129,12 @@ Key points:
 - `AI_PROVIDER=mock` (default) uses the offline, deterministic mock provider. Its
   output is always flagged as demo output in the API and UI. Set `anthropic` or
   `openai_compatible` together with `AI_API_KEY` to use a real model (Phase 4).
+- `NUM_PROXIES` is the number of trusted reverse proxies in front of Django (1 in
+  Docker Compose, behind Nginx). Rate limiting identifies clients through
+  `X-Forwarded-For` only when this is set correctly. Never set it higher than
+  the real number of proxies, or clients can spoof their address.
+- `REGISTRATION_ENABLED=false` (default) disables self-service organization
+  sign-up; users join by invitation.
 - `VITE_*` variables are bundled into the browser. Only public values go there,
   never keys.
 

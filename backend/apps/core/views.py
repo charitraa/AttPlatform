@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from . import health
@@ -15,6 +16,8 @@ class PublicAPIView(APIView):
 
     authentication_classes: list = []
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "system"
 
 
 class HealthView(PublicAPIView):
@@ -50,6 +53,6 @@ class MetaView(PublicAPIView):
                 "environment": settings.ENVIRONMENT,
                 "ai_provider": settings.AI_PROVIDER,
                 "ai_mock_mode": settings.AI_PROVIDER == "mock",
-                "features": {"websockets": True, "ai": True, "registration": False},
+                "features": {"websockets": True, "ai": True, "registration": settings.REGISTRATION_ENABLED},
             }
         )

@@ -9,6 +9,7 @@ import { useMeta, useReadiness } from '@/lib/api/system'
 import { useUIStore } from '@/stores/ui'
 import { Brand, NavList } from './sidebar'
 import { ThemeMenu } from './theme-menu'
+import { UserMenu } from './user-menu'
 
 function ConnectionBadge() {
   const { data, isError } = useReadiness()
@@ -59,10 +60,11 @@ export function Topbar() {
           </Badge>
         )}
         <ConnectionBadge />
-        <Button variant="ghost" size="icon" aria-label="Notifications" render={<Link to="/notifications" />}>
+        <Button variant="ghost" size="icon" aria-label="Notifications" nativeButton={false} render={<Link to="/notifications" />}>
           <Bell />
         </Button>
         <ThemeMenu />
+        <UserMenu />
       </div>
     </header>
   )

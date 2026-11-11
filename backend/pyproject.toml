@@ -7,7 +7,9 @@ requires-python = ">=3.13"
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["test_*.py"]
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-ra --strict-markers --reuse-db"
+# --ds beats the DJANGO_SETTINGS_MODULE env var (set to dev inside Docker), so tests
+# always run with test settings: eager Celery, locmem email/cache, in-memory channels.
+addopts = "-ra --strict-markers --reuse-db --ds=config.settings.test"
 filterwarnings = [
   "ignore::DeprecationWarning:celery.*",
   "ignore:No directory at:UserWarning",
@@ -24,6 +26,8 @@ ignore = ["S101"]  # assert is fine in tests
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/*" = ["S"]
+"conftest.py" = ["S"]
+"config/settings/test.py" = ["S105"]
 "config/settings/*" = ["F405"]
 
 [tool.coverage.run]

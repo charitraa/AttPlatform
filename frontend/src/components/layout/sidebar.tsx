@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { navigation } from '@/config/navigation'
 import { cn } from '@/lib/utils'
+import { hasAnyPermission, useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
 
 export function Brand({ collapsed = false }: { collapsed?: boolean }) {
@@ -16,9 +17,15 @@ export function Brand({ collapsed = false }: { collapsed?: boolean }) {
 }
 
 export function NavList({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+  const user = useAuthStore((s) => s.user)
+  // Navigation mirrors permissions for usability; the API enforces access regardless.
+  const groups = navigation
+    .map((g) => ({ ...g, items: g.items.filter((i) => hasAnyPermission(user, i.permissions ?? [])) }))
+    .filter((g) => g.items.length > 0)
+
   return (
     <nav aria-label="Main" className="flex flex-col gap-5">
-      {navigation.map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
           {!collapsed && (
             <p className="px-2 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{group.label}</p>

@@ -19,6 +19,7 @@ x-backend: &backend
     CELERY_RESULT_BACKEND: redis://redis:6379/2
     CHANNELS_REDIS_URL: redis://redis:6379/3
     MEDIA_ROOT: /app/media
+    NUM_PROXIES: "1"  # nginx sits in front of Django
   volumes:
     - ./backend:/app
     - media:/app/media

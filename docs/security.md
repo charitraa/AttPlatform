@@ -8,15 +8,24 @@
 - **JWT** via `djangorestframework-simplejwt`:
   - Access token: 15 minutes, held **in memory** by the SPA.
   - Refresh token: 7 days, rotated on every refresh, old token blacklisted.
-  - Production option: refresh token in an `HttpOnly; Secure; SameSite=Strict`
-    cookie scoped to `/api/v1/auth/` (removes XSS access to the long-lived token).
-    Development defaults to the same cookie approach so dev mirrors prod.
+  - Refresh token in an `HttpOnly; Secure; SameSite=Strict` cookie scoped to
+    `/api/v1/auth/`, so scripts (and XSS) can't read it and no other endpoint
+    receives it. Dev uses the same cookie (without `Secure`), so dev mirrors prod.
+  - Refresh also re-checks that the user is active and still has an active
+    membership; deactivation revokes outstanding refresh tokens immediately.
 - Logout blacklists the refresh token. Password change/reset revokes all of the
   user's outstanding refresh tokens.
 - Forgot-password always returns 202 regardless of whether the email exists.
 - Login is throttled per IP and per email; failed logins are audit-logged.
 
 ## 2. Authorization
+
+Implementation: `apps/organizations/catalog.py` defines every permission code and
+the six system roles (with a privilege rank); the database tables are synced from
+it on every `migrate`. Views declare requirements with `HasPermission(...)` or
+`MethodPermissions` (unlisted HTTP methods are denied). `apps/organizations/tenancy.py`
+resolves the organization from the user's memberships.
+
 
 - RBAC with six system roles; permissions are `<resource>.<action>` codes.
 - Checked at the API layer (DRF permission classes) **and** in services for
@@ -61,8 +70,16 @@ Application-level scoping is the primary control. RLS policies keyed on a
 
 ## 5. Rate limiting
 
-DRF throttles backed by Redis: anon, user, login, password-reset, AI, upload scopes.
-Nginx `limit_req` as an outer layer in production.
+DRF throttles backed by Redis (scopes listed in `api-documentation.md`).
+Credential endpoints are limited per IP+email *and* per IP. Nginx `limit_req`
+is an outer layer in production.
+
+**Proxy awareness.** `NUM_PROXIES` must equal the number of trusted proxies in
+front of Django. With 0 behind Nginx, every client shares the proxy's IP and
+one rate-limit bucket (a regression test covers this). With a value higher than
+reality, or when Django is reachable directly while it is set, clients can spoof
+`X-Forwarded-For`. The development Compose file publishes Django on :8000 for
+convenience; production must expose only the proxy.
 
 ## 6. Secrets
 
@@ -86,6 +103,18 @@ Nginx `limit_req` as an outer layer in production.
   private/link-local/loopback ranges after DNS resolution.
 
 ## 8. Audit logging
+
+Implemented in `apps.audit`: `AuditLog.save()` refuses updates, the admin is
+read-only, and `services.record()` redacts keys that look like secrets
+(`password`, `token`, `secret`, …). A failure to write an audit entry is logged
+loudly but never breaks the business operation.
+
+Currently recorded: `auth.login`, `auth.login_failed`, `auth.password_changed`,
+`auth.password_reset_requested`, `auth.password_reset`, `organization.registered`,
+`organization.updated`, `membership.role_changed`, `membership.status_changed`,
+`invitation.created|resent|revoked|accepted`, `user.profile_updated`.
+
+Planned coverage:
 
 Append-only `AuditLog` for: auth events, role/permission changes, user
 (de)activation, ticket create/update/assign/archive, AI overrides, SLA policy

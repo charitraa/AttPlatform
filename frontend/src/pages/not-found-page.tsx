@@ -8,7 +8,7 @@ export function NotFoundPage() {
       className="mt-12"
       title="Page not found"
       description="The page you're looking for doesn't exist or has moved."
-      action={<Button size="sm" render={<Link to="/" />}>Back to dashboard</Button>}
+      action={<Button size="sm" nativeButton={false} render={<Link to="/" />}>Back to dashboard</Button>}
     />
   )
 }

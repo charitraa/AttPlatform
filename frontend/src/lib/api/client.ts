@@ -19,11 +19,29 @@ export class ApiError extends Error {
 }
 
 type TokenProvider = () => string | null
-let getAccessToken: TokenProvider = () => null
+/** Obtains a new access token (via the refresh cookie); resolves null when the session is gone. */
+type Refresher = () => Promise<string | null>
 
-/** Registered by the auth store (Phase 2) so the client stays decoupled from it. */
+let getAccessToken: TokenProvider = () => null
+let refreshAccessToken: Refresher | null = null
+let refreshInFlight: Promise<string | null> | null = null
+
+/** Registered by the auth store so the client stays decoupled from it. */
 export function setAccessTokenProvider(provider: TokenProvider) {
   getAccessToken = provider
+}
+
+export function setTokenRefresher(refresher: Refresher | null) {
+  refreshAccessToken = refresher
+}
+
+/** Concurrent 401s share one refresh request (refresh tokens rotate and are single-use). */
+function refreshOnce(): Promise<string | null> {
+  if (!refreshAccessToken) return Promise.resolve(null)
+  refreshInFlight ??= refreshAccessToken().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
 }
 
 export interface RequestOptions<T> extends Omit<RequestInit, 'body'> {
@@ -32,10 +50,14 @@ export interface RequestOptions<T> extends Omit<RequestInit, 'body'> {
   schema?: z.ZodType<T>
   /** Treat these non-2xx statuses as successful responses (e.g. 503 readiness). */
   acceptStatus?: number[]
+  /** Internal: set on the retry after a token refresh to prevent loops. */
+  _retried?: boolean
+  /** Don't attempt a token refresh on 401 (used by the auth endpoints themselves). */
+  skipAuthRefresh?: boolean
 }
 
 export async function apiRequest<T = unknown>(path: string, options: RequestOptions<T> = {}): Promise<T> {
-  const { body, schema, acceptStatus = [], headers, ...init } = options
+  const { body, schema, acceptStatus = [], headers, _retried, skipAuthRefresh, ...init } = options
   const finalHeaders = new Headers(headers)
   finalHeaders.set('Accept', 'application/json')
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData
@@ -63,6 +85,12 @@ export async function apiRequest<T = unknown>(path: string, options: RequestOpti
     } catch {
       throw new ApiError(response.status, 'invalid_response', 'The server returned an unexpected response.', null, requestId)
     }
+  }
+
+  // Expired access token: refresh once, then replay the original request.
+  if (response.status === 401 && token && !_retried && !skipAuthRefresh) {
+    const fresh = await refreshOnce()
+    if (fresh) return apiRequest<T>(path, { ...options, _retried: true })
   }
 
   if (!response.ok && !acceptStatus.includes(response.status)) {

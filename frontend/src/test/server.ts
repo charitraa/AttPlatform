@@ -11,6 +11,11 @@ export const fixtures = {
 }
 
 export const handlers = [
+  // No session by default: tests that need one call signIn() from render.tsx.
+  http.post(`${API}/auth/refresh/`, () =>
+    HttpResponse.json({ error: { code: 'not_authenticated', message: 'No active session.', details: null, request_id: 'x' } }, { status: 401 }),
+  ),
+  http.post(`${API}/auth/logout/`, () => new HttpResponse(null, { status: 204 })),
   http.get(`${API}/health/`, () => HttpResponse.json(fixtures.health)),
   http.get(`${API}/health/ready/`, () => HttpResponse.json(fixtures.readyOk)),
   http.get(`${API}/meta/`, () => HttpResponse.json(fixtures.meta)),

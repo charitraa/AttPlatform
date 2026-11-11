@@ -52,7 +52,11 @@ THIRD_PARTY_APPS = [
 ]
 LOCAL_APPS = [
     "apps.core",
+    "apps.accounts",
+    "apps.organizations",
+    "apps.audit",
 ]
+AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
@@ -161,10 +165,17 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
+    # Number of trusted reverse proxies in front of Django. Throttling identifies
+    # clients by X-Forwarded-For only when this is set; with 0 behind a proxy,
+    # every client would share the proxy's IP (and one rate-limit bucket).
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0) or None,
     "DEFAULT_THROTTLE_RATES": {
         "anon": env("THROTTLE_ANON", default="30/min"),
         "user": env("THROTTLE_USER", default="600/min"),
-        "auth": env("THROTTLE_AUTH", default="5/min"),
+        "auth": env("THROTTLE_AUTH", default="5/min"),  # per IP + email
+        "auth_ip": env("THROTTLE_AUTH_IP", default="30/min"),  # per IP across all emails
+        "session": env("THROTTLE_SESSION", default="60/min"),  # token refresh (every page load)
+        "system": env("THROTTLE_SYSTEM", default="120/min"),  # health / meta (polled by the UI)
         "ai": env("THROTTLE_AI", default="30/min"),
     },
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
@@ -176,9 +187,19 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "UPDATE_LAST_LOGIN": True,
-    "SIGNING_KEY": env("JWT_SIGNING_KEY", default=SECRET_KEY),
+    "SIGNING_KEY": env("JWT_SIGNING_KEY", default="") or SECRET_KEY,  # empty in .env means "use SECRET_KEY"
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# Refresh token cookie (see apps/accounts/cookies.py and docs/security.md).
+REFRESH_COOKIE_NAME = "att_refresh"
+REFRESH_COOKIE_PATH = "/api/v1/auth/"
+REFRESH_COOKIE_SECURE = env.bool("REFRESH_COOKIE_SECURE", default=not DEBUG)
+REFRESH_COOKIE_SAMESITE = "Strict"
+
+REGISTRATION_ENABLED = env.bool("REGISTRATION_ENABLED", default=False)
+INVITATION_EXPIRY_DAYS = env.int("INVITATION_EXPIRY_DAYS", default=7)
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT", default=60 * 60)  # seconds
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "ATT Platform API",

@@ -13,6 +13,20 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: { alias: { '@': path.resolve(import.meta.dirname, './src') } },
+    build: {
+      rolldownOptions: {
+        output: {
+          // Long-lived vendor chunks: app deploys don't invalidate library caches.
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/ },
+              { name: 'vendor-ui', test: /node_modules[\\/](@base-ui|@floating-ui|lucide-react|sonner)[\\/]/ },
+              { name: 'vendor-data', test: /node_modules[\\/](@tanstack|zod|zustand|react-hook-form|@hookform)[\\/]/ },
+            ],
+          },
+        },
+      },
+    },
     server: {
       host: true,
       port: 5173,

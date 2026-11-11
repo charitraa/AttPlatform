@@ -65,8 +65,17 @@ All errors share one envelope (central exception handler):
 
 ### Rate limits
 
-Anonymous: 30/min; authenticated: 600/min; login & password reset: 5/min per IP+email;
-AI endpoints: 30/min per user. Values are env-configurable.
+| Scope | Default | Applies to |
+|-------|---------|------------|
+| `anon` / `user` | 30/min / 600/min | everything without a narrower scope |
+| `auth` | 5/min per IP+email | login, register, password forgot/reset, invitation preview/accept |
+| `auth_ip` | 30/min per IP | the same endpoints across all emails, plus change-password |
+| `session` | 60/min | token refresh (called on every page load) |
+| `system` | 120/min | health, readiness, meta (polled by the UI) |
+| `ai` | 30/min per user | AI endpoints (Phase 4) |
+
+Clients are identified by IP. Behind a reverse proxy set `NUM_PROXIES`, or every
+client shares the proxy's address (and one bucket). All values are env-configurable.
 
 ## 2. Endpoint map
 
@@ -77,27 +86,37 @@ AI endpoints: 30/min per user. Values are env-configurable.
 | GET | `/health/ready/` | Readiness: database + Redis. Public, no internals. |
 | GET | `/meta/` | Public client config: app version, environment, enabled features. |
 
-### Auth & accounts (Phase 2)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/auth/login/` | Email + password → access + refresh |
-| POST | `/auth/refresh/` | Rotate refresh token |
-| POST | `/auth/logout/` | Blacklist refresh token |
-| POST | `/auth/register/` | Register org + first admin (if enabled) |
-| POST | `/auth/invitations/accept/` | Accept invitation, set password |
-| POST | `/auth/password/forgot/` | Always 202 (no account enumeration) |
-| POST | `/auth/password/reset/` | Token + new password |
-| GET/PATCH | `/me/` | Current user profile, memberships, role, permissions |
-| POST | `/me/password/` | Change password |
+### Auth & accounts (Phase 2 ✅)
 
-### Organization & users (Phase 2)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET/PATCH | `/organization/` | Current org settings |
-| GET/POST | `/users/` | List / create users in org |
-| GET/PATCH/DELETE | `/users/{id}/` | Manage user (deactivate rather than delete) |
-| GET/POST | `/invitations/` | List / send invitations |
-| GET | `/roles/` | Roles and their permissions |
+Session model: `login` returns the **access token in the body** (keep it in
+memory) and sets the **refresh token as an HttpOnly cookie** (`att_refresh`,
+`Path=/api/v1/auth/`, `SameSite=Strict`, `Secure` outside debug). The refresh
+token is never present in a response body.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/login/` | — | `{email, password}` → `{access, user}` + refresh cookie. 401 `invalid_credentials` for any failure (unknown email, wrong password, inactive, no membership). Throttled per IP+email and per IP. |
+| POST | `/auth/refresh/` | cookie | Rotates the cookie (old token blacklisted) → `{access}`. 401 `session_expired` clears the cookie. |
+| POST | `/auth/logout/` | cookie | Blacklists the refresh token, clears the cookie. 204. |
+| POST | `/auth/register/` | — | Only when `REGISTRATION_ENABLED`; otherwise 404. Creates org + Organization Admin. 409 if email exists. |
+| POST | `/auth/password/forgot/` | — | `{email}` → always 202 (no account enumeration). Emails a single-use link valid for `PASSWORD_RESET_TIMEOUT`. |
+| POST | `/auth/password/reset/` | — | `{uid, token, new_password}`. Revokes every session of the user. |
+| POST | `/auth/invitations/preview/` | — | `{token}` → `{organization_name, email, role_name, existing_account}`. |
+| POST | `/auth/invitations/accept/` | — | `{token, password, first_name?, last_name?}` → `{access, user}` + cookie. Existing accounts must supply their current password. |
+| GET/PATCH | `/me/` | bearer | Profile + active organization, role, permission codes, memberships. PATCH: `first_name`, `last_name`, `phone`, `timezone`. |
+| POST | `/me/password/` | bearer | `{current_password, new_password}` → `{access}` + new cookie; all other sessions revoked. |
+
+### Organization & users (Phase 2 ✅)
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET / PATCH | `/organization/` | `organization.view` / `organization.manage` | Current org. `settings` accepts only `routing_policy` (`manual`/`recommend`/`auto`), `ai_enabled`, `ticket_auto_close_days` (1–90); unknown keys → 400. `slug` is read-only. |
+| GET | `/users/` | `users.view` | Members of the current org. Filters: `role`, `is_active`; `search` (name/email); `ordering`. |
+| GET / PATCH / DELETE | `/users/{user_id}/` | `users.view` / `users.manage` | PATCH `{role?, is_active?}`. DELETE deactivates (memberships are never hard-deleted). Rules: no self-changes (400); can't grant a role above your own or manage a higher-ranked user (403); Super Admin only by Super Admins; the last active admin can't be demoted/deactivated (400). Deactivation revokes the user's sessions. |
+| GET / POST | `/invitations/` | `invitations.manage` | Filter `status` = `pending`/`accepted`/`expired`/`revoked`. POST `{email, role}`; 409 if already a member or an open invitation exists. |
+| DELETE | `/invitations/{id}/` | `invitations.manage` | Revoke. |
+| POST | `/invitations/{id}/resend/` | `invitations.manage` | New token and expiry; the old link stops working. |
+| GET | `/roles/` | `roles.view` | System roles with permission codes and `assignable` (whether the caller may grant it). |
+| GET | `/audit-logs/` | `audit.view` | Org-scoped audit trail. Filters: `action` (prefix), `actor`, `target_type`, `target_id`, `created_after`, `created_before`. |
 
 ### Dashboard (Phase 2 shell, metrics from Phase 3+)
 | GET | `/dashboard/summary/` | KPI tiles |
