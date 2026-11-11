@@ -1,0 +1,28 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!frontend/.env.test
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+backend/media/
+backend/staticfiles/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

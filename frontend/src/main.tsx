@@ -1,7 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
-import '@fontsource-variable/geist'
 import { AppProviders } from '@/app/providers'
 import { createRouter } from '@/app/router'
 import { createQueryClient } from '@/lib/api/query-client'

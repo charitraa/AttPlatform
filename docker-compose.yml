@@ -1,0 +1,117 @@
+# ATT Platform — development environment.
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# App:       http://localhost:8080             (Nginx → frontend + backend)
+# API docs:  http://localhost:8080/api/v1/docs/
+
+x-backend: &backend
+  build:
+    context: ./backend
+    target: dev
+  env_file: .env
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.dev
+    DATABASE_URL: postgres://${POSTGRES_USER:-att}:${POSTGRES_PASSWORD:-att_dev_password}@db:5432/${POSTGRES_DB:-att}
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    CHANNELS_REDIS_URL: redis://redis:6379/3
+    MEDIA_ROOT: /app/media
+  volumes:
+    - ./backend:/app
+    - media:/app/media
+  depends_on:
+    db: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-att}
+      POSTGRES_USER: ${POSTGRES_USER:-att}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-att_dev_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    # Not published by default, so it can't clash with a host PostgreSQL.
+    # ports: ["5433:5432"]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    <<: *backend
+    entrypoint: ["./entrypoint-dev.sh"]
+    # Django's runserver is ASGI-aware via daphne in INSTALLED_APPS (HTTP + WebSockets, autoreload).
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "default,ai,notifications,webhooks,sla"]
+    depends_on:
+      backend: { condition: service_healthy }
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+    depends_on:
+      backend: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    environment:
+      VITE_DEV_PROXY_TARGET: http://backend:8000
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+      VITE_WS_URL: ${VITE_WS_URL:-}
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  media:
+  frontend_node_modules:
