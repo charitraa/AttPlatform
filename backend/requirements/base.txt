@@ -1,0 +1,28 @@
+# Core framework (Django 5.2 LTS)
+Django>=5.2,<5.3
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
+drf-spectacular==0.30.0
+django-filter==26.2
+django-cors-headers==4.9.0
+django-environ==0.14.0
+
+# Database / cache
+psycopg[binary]==3.3.8
+redis==8.1.0
+django-redis>=5.4
+
+# Async, real-time, background jobs
+channels==4.3.2
+channels-redis==4.3.0
+daphne==4.2.3
+celery==5.7.0
+django-celery-beat==2.9.0
+
+# Security
+argon2-cffi>=23.1
+cryptography>=44
+
+# Files / static
+whitenoise==6.12.0
+Pillow>=11

@@ -1,0 +1,164 @@
+# ATT Platform — API Documentation
+
+The authoritative, always-current contract is the generated OpenAPI 3 schema:
+
+| URL | Content |
+|-----|---------|
+| `/api/v1/schema/` | OpenAPI 3 schema (YAML; `?format=json` for JSON) |
+| `/api/v1/docs/` | Swagger UI |
+| `/api/v1/redoc/` | ReDoc |
+
+This document describes conventions and the planned endpoint map. Endpoints are
+marked with the phase in which they are delivered.
+
+## 1. Conventions
+
+- **Base path**: `/api/v1/`. Breaking changes require `/api/v2/`.
+- **Format**: JSON, `snake_case` fields, ISO-8601 UTC timestamps (`2026-11-11T18:00:00Z`).
+- **IDs**: UUID strings. Tickets/work orders also expose `number` (`TCK-001042`).
+- **Auth**: `Authorization: Bearer <access_token>`.
+- **Organization**: never sent by the client; derived from the authenticated user.
+  (Users with several memberships send `X-Organization: <slug>`, which is
+  *validated against their memberships* server-side.)
+- **Request ID**: clients may send `X-Request-ID`; the server always returns one.
+
+### Pagination
+
+Page-number pagination, `?page=2&page_size=25` (max 100):
+
+```json
+{ "count": 132, "next": "…?page=3", "previous": "…?page=1", "results": [ … ] }
+```
+
+### Filtering, search, ordering
+
+- Filters as query params: `?status=open&priority=high,critical&assigned_agent=<uuid>`
+- Date ranges: `?created_after=2026-11-01&created_before=2026-11-30`
+- Search: `?search=router offline`
+- Ordering: `?ordering=-created_at` (whitelisted fields only)
+
+### Errors
+
+All errors share one envelope (central exception handler):
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Invalid input.",
+    "details": { "title": ["This field is required."] },
+    "request_id": "6f1c…"
+  }
+}
+```
+
+| HTTP | `code` examples |
+|------|-----------------|
+| 400 | `validation_error`, `invalid_transition` |
+| 401 | `not_authenticated`, `token_not_valid` |
+| 403 | `permission_denied` |
+| 404 | `not_found` (also returned for other organizations' resources — no existence leak) |
+| 409 | `conflict` |
+| 429 | `throttled` |
+| 500 | `server_error` (no internals exposed) |
+| 503 | `service_unavailable` (e.g. readiness check failure) |
+
+### Rate limits
+
+Anonymous: 30/min; authenticated: 600/min; login & password reset: 5/min per IP+email;
+AI endpoints: 30/min per user. Values are env-configurable.
+
+## 2. Endpoint map
+
+### System (Phase 1)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health/` | Liveness. Public. |
+| GET | `/health/ready/` | Readiness: database + Redis. Public, no internals. |
+| GET | `/meta/` | Public client config: app version, environment, enabled features. |
+
+### Auth & accounts (Phase 2)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/login/` | Email + password → access + refresh |
+| POST | `/auth/refresh/` | Rotate refresh token |
+| POST | `/auth/logout/` | Blacklist refresh token |
+| POST | `/auth/register/` | Register org + first admin (if enabled) |
+| POST | `/auth/invitations/accept/` | Accept invitation, set password |
+| POST | `/auth/password/forgot/` | Always 202 (no account enumeration) |
+| POST | `/auth/password/reset/` | Token + new password |
+| GET/PATCH | `/me/` | Current user profile, memberships, role, permissions |
+| POST | `/me/password/` | Change password |
+
+### Organization & users (Phase 2)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/PATCH | `/organization/` | Current org settings |
+| GET/POST | `/users/` | List / create users in org |
+| GET/PATCH/DELETE | `/users/{id}/` | Manage user (deactivate rather than delete) |
+| GET/POST | `/invitations/` | List / send invitations |
+| GET | `/roles/` | Roles and their permissions |
+
+### Dashboard (Phase 2 shell, metrics from Phase 3+)
+| GET | `/dashboard/summary/` | KPI tiles |
+| GET | `/dashboard/trends/?period=30d` | Ticket trend series |
+| GET | `/dashboard/activity/` | Recent activity |
+
+### Tickets (Phase 3)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | `/tickets/` | List (filter/search/sort/paginate) / create |
+| GET/PATCH | `/tickets/{id}/` | Detail / edit |
+| POST | `/tickets/{id}/archive/` | Archive (permission-gated) |
+| POST | `/tickets/{id}/transition/` | `{ "status": "in_progress", "note": "…" }` — state machine |
+| POST | `/tickets/{id}/assign/` | Assign agent / technician |
+| POST | `/tickets/{id}/escalate/` | Manual escalation |
+| GET/POST | `/tickets/{id}/comments/` | Public comments & internal notes |
+| GET/POST | `/tickets/{id}/attachments/` | Multipart upload |
+| GET | `/tickets/{id}/history/` | Audit trail / timeline |
+| GET/POST | `/ticket-categories/` | Category tree |
+
+### AI (Phase 4)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/tickets/{id}/ai/analyze/` | Enqueue classification + priority (202) |
+| POST | `/tickets/{id}/ai/summarize/` | Enqueue summary (202) |
+| POST | `/tickets/{id}/ai/route/` | Routing recommendation (202) |
+| POST | `/tickets/{id}/ai/suggest-response/` | Draft reply (202) |
+| GET | `/tickets/{id}/ai/analyses/` | Analysis history |
+| GET | `/ai/recommendations/?status=pending` | Pending recommendations |
+| POST | `/ai/recommendations/{id}/accept/` | Accept |
+| POST | `/ai/recommendations/{id}/reject/` | Reject / override with value |
+| POST | `/ai/assistant/query/` | Knowledge assistant question |
+| GET | `/ai/insights/` | Generated insights |
+| GET/POST/PATCH | `/knowledge/articles/` | Knowledge base + review workflow |
+
+### Field service (Phase 5)
+`/technicians/`, `/technicians/{id}/availability/`, `/technicians/{id}/location/`,
+`/skills/`, `/service-areas/`, `/work-orders/`, `/work-orders/{id}/transition/`,
+`/work-orders/{id}/evidence/`, `/work-orders/{id}/confirm/`, `/appointments/`,
+`/schedule/?start=&end=&technician=`, `/me/work-orders/` (technician app).
+
+### SLA & notifications (Phase 6)
+`/sla/policies/`, `/sla/business-hours/`, `/tickets/{id}/sla/`, `/sla/report/`,
+`/notifications/`, `/notifications/{id}/read/`, `/notifications/read-all/`,
+`/notifications/preferences/`. WebSocket: `/ws/events/?token=<access>`.
+
+### Customers, assets, integrations, analytics, portal (Phase 3/5/7)
+`/customers/`, `/customers/{id}/contacts/`, `/customers/{id}/tickets/`,
+`/assets/`, `/assets/{id}/service-records/`, `/integrations/`,
+`/integrations/{id}/test/`, `/integrations/{id}/logs/`,
+`/webhooks/inbound/{integration_id}/` (signature-verified, unauthenticated),
+`/analytics/{report}/?from=&to=&format=csv`,
+`/portal/tickets/`, `/portal/tickets/{id}/comments/`, `/portal/feedback/`.
+
+## 3. Asynchronous operations
+
+AI and report endpoints return **202 Accepted** with the created resource:
+
+```json
+{ "id": "…", "kind": "classification", "status": "pending" }
+```
+
+Clients poll `GET /ai/analyses/{id}/` or listen for `ai.analysis.completed` on the
+WebSocket.
