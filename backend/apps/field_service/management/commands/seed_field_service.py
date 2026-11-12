@@ -8,6 +8,7 @@ status logs, audit entries and ticket notes are genuine.
 
 Run after `seed_demo` and `seed_tickets`. Refuses to run in production.
 """
+
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -53,8 +54,15 @@ TECHS = [
     ("bikash@acme.test", "Bikash", "Shrestha", "Lalitpur", {"Network": 5, "Printers": 4, "Access control": 3}),
     ("sita@acme.test", "Sita", "Rai", "Chitwan", {"Refrigeration": 5, "Medical equipment": 4, "Electrical": 3}),
 ]
-SKILL_CATEGORY = {"HVAC": "HVAC", "Refrigeration": "Refrigeration", "Electrical": "Electrical", "Network": "Network",
-                  "Printers": "Printers", "Access control": "Access control", "Medical equipment": "Medical equipment"}
+SKILL_CATEGORY = {
+    "HVAC": "HVAC",
+    "Refrigeration": "Refrigeration",
+    "Electrical": "Electrical",
+    "Network": "Network",
+    "Printers": "Printers",
+    "Access control": "Access control",
+    "Medical equipment": "Medical equipment",
+}
 
 
 class Command(BaseCommand):
@@ -78,15 +86,18 @@ class Command(BaseCommand):
         tz = ZoneInfo(organization.timezone or "UTC")
 
         areas = {
-            name: ServiceArea.objects.get_or_create(organization=organization, name=name,
-                                                    defaults={"cities": cities})[0]
-            for name, cities in (("Kathmandu Valley", ["Kathmandu", "Lalitpur", "Bhaktapur"]),
-                                 ("Western", ["Pokhara"]), ("Central Terai", ["Chitwan"]))
+            name: ServiceArea.objects.get_or_create(organization=organization, name=name, defaults={"cities": cities})[
+                0
+            ]
+            for name, cities in (
+                ("Kathmandu Valley", ["Kathmandu", "Lalitpur", "Bhaktapur"]),
+                ("Western", ["Pokhara"]),
+                ("Central Terai", ["Chitwan"]),
+            )
         }
         skills = {}
         for name, category_name in SKILL_CATEGORY.items():
-            skill, _ = Skill.objects.get_or_create(organization=organization, name=name,
-                                                   defaults={"category": "Trade"})
+            skill, _ = Skill.objects.get_or_create(organization=organization, name=name, defaults={"category": "Trade"})
             cat = TicketCategory.objects.filter(organization=organization, name=category_name).first()
             if cat:
                 skill.ticket_categories.add(cat)
@@ -100,8 +111,9 @@ class Command(BaseCommand):
             if created:
                 user.set_password(password)
                 user.save()
-            Membership.objects.update_or_create(user=user, organization=organization,
-                                                defaults={"role": role, "is_active": True})
+            Membership.objects.update_or_create(
+                user=user, organization=organization, defaults={"role": role, "is_active": True}
+            )
             tech = Technician.objects.get(organization=organization, user=user)  # created by the membership signal
             tech.home_lat, tech.home_lng = CITIES[city]
             tech.employee_id = f"T-{len(techs) + 101}"
@@ -110,29 +122,43 @@ class Command(BaseCommand):
             area = next(a for a in areas.values() if city in a.cities)
             tech.service_areas.add(area)
             for skill_name, level in levels.items():
-                TechnicianSkill.objects.update_or_create(technician=tech, skill=skills[skill_name],
-                                                         defaults={"level": level})
+                TechnicianSkill.objects.update_or_create(
+                    technician=tech, skill=skills[skill_name], defaults={"level": level}
+                )
             TechnicianCertification.objects.get_or_create(
-                technician=tech, name=f"{next(iter(levels))} technician certificate",
-                defaults={"issuer": "CTEVT", "issued_at": date.today() - timedelta(days=700),
-                          "expires_at": date.today() + timedelta(days=400 if len(techs) != 2 else -10)},
+                technician=tech,
+                name=f"{next(iter(levels))} technician certificate",
+                defaults={
+                    "issuer": "CTEVT",
+                    "issued_at": date.today() - timedelta(days=700),
+                    "expires_at": date.today() + timedelta(days=400 if len(techs) != 2 else -10),
+                },
             )
             for d in range(10):  # two working weeks of 09:00-17:00 shifts, Sunday-Friday (Nepal)
                 day = monday + timedelta(days=d - 1)
                 if day.weekday() == 5:  # Saturday is the weekly holiday
                     continue
                 TechnicianAvailability.objects.create(
-                    technician=tech, type=TechnicianAvailability.Type.SHIFT,
-                    starts_at=datetime.combine(day, time(9), tz), ends_at=datetime.combine(day, time(17), tz))
+                    technician=tech,
+                    type=TechnicianAvailability.Type.SHIFT,
+                    starts_at=datetime.combine(day, time(9), tz),
+                    ends_at=datetime.combine(day, time(17), tz),
+                )
             techs.append(tech)
         # One technician takes Thursday off.
         thursday = monday + timedelta(days=3)
         TechnicianAvailability.objects.create(
-            technician=techs[1], type=TechnicianAvailability.Type.TIME_OFF, note="Family event",
-            starts_at=datetime.combine(thursday, time(0), tz), ends_at=datetime.combine(thursday, time(23, 59), tz))
+            technician=techs[1],
+            type=TechnicianAvailability.Type.TIME_OFF,
+            note="Family event",
+            starts_at=datetime.combine(thursday, time(0), tz),
+            ends_at=datetime.combine(thursday, time(23, 59), tz),
+        )
 
-        ops = Membership.objects.filter(organization=organization, role__code=RoleCode.OPS_MANAGER).first() or \
-            Membership.objects.filter(organization=organization, role__code=RoleCode.ORG_ADMIN).first()
+        ops = (
+            Membership.objects.filter(organization=organization, role__code=RoleCode.OPS_MANAGER).first()
+            or Membership.objects.filter(organization=organization, role__code=RoleCode.ORG_ADMIN).first()
+        )
         dispatcher = TenantContext(membership=ops, permissions=permissions_for(ops))
 
         def tech_ctx(tech):
@@ -141,10 +167,23 @@ class Command(BaseCommand):
 
         field_tickets = list(
             Ticket.objects.filter(organization=organization, category__name__in=SKILL_CATEGORY.values())
-            .select_related("customer", "category").order_by("created_at")[:12]
+            .select_related("customer", "category")
+            .order_by("created_at")[:12]
         )
-        plan = ["completed", "completed", "completed", "in_progress", "on_site", "en_route", "accepted", "assigned",
-                "assigned", "assigned", "created", "cancelled"]
+        plan = [
+            "completed",
+            "completed",
+            "completed",
+            "in_progress",
+            "on_site",
+            "en_route",
+            "accepted",
+            "assigned",
+            "assigned",
+            "assigned",
+            "created",
+            "cancelled",
+        ]
         steps = ["accepted", "en_route", "on_site", "in_progress", "completed"]
         created = 0
         for i, (ticket, target) in enumerate(zip(field_tickets, plan, strict=False)):
@@ -172,22 +211,45 @@ class Command(BaseCommand):
             ctx = tech_ctx(tech)
             for step in steps[: steps.index(target) + 1] if target in steps else []:
                 if step == "on_site":
-                    services.add_evidence(tenant=ctx, work_order=wo, kind="before_photo",
-                                          upload=SimpleUploadedFile("before.png", PNG), caption="Unit on arrival")
+                    services.add_evidence(
+                        tenant=ctx,
+                        work_order=wo,
+                        kind="before_photo",
+                        upload=SimpleUploadedFile("before.png", PNG),
+                        caption="Unit on arrival",
+                    )
                 if step == "completed":
-                    services.add_evidence(tenant=ctx, work_order=wo, kind="after_photo",
-                                          upload=SimpleUploadedFile("after.png", PNG), caption="Running normally")
-                    wo = services.advance(tenant=ctx, work_order=wo, to_status=step, completion={
-                        "completion_summary": "Diagnosed the fault, replaced the failed component and tested.",
-                        "parts_used": [{"name": "Replacement part", "quantity": 1, "unit_cost": "850.00"}],
-                        "labor_minutes": 75,
-                    })
+                    services.add_evidence(
+                        tenant=ctx,
+                        work_order=wo,
+                        kind="after_photo",
+                        upload=SimpleUploadedFile("after.png", PNG),
+                        caption="Running normally",
+                    )
+                    wo = services.advance(
+                        tenant=ctx,
+                        work_order=wo,
+                        to_status=step,
+                        completion={
+                            "completion_summary": "Diagnosed the fault, replaced the failed component and tested.",
+                            "parts_used": [{"name": "Replacement part", "quantity": 1, "unit_cost": "850.00"}],
+                            "labor_minutes": 75,
+                        },
+                    )
                     if i < 2:
-                        services.confirm(tenant=ctx, work_order=wo, signed_by=ticket.contact.name if ticket.contact
-                                         else "Site manager", rating=5 - i, comment="Quick and tidy work.")
+                        services.confirm(
+                            tenant=ctx,
+                            work_order=wo,
+                            signed_by=ticket.contact.name if ticket.contact else "Site manager",
+                            rating=5 - i,
+                            comment="Quick and tidy work.",
+                        )
                 else:
                     wo = services.advance(tenant=ctx, work_order=wo, to_status=step)
 
-        self.stdout.write(self.style.SUCCESS(
-            f"Seeded {len(techs)} technicians, {len(skills)} skills, {len(areas)} service areas and "
-            f"{created} work orders for '{organization.slug}'. Technician password: {password}"))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Seeded {len(techs)} technicians, {len(skills)} skills, {len(areas)} service areas and "
+                f"{created} work orders for '{organization.slug}'. Technician password: {password}"
+            )
+        )

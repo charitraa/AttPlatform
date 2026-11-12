@@ -1,5 +1,6 @@
 from django.urls import reverse
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from apps.assets.models import Asset
@@ -358,6 +359,7 @@ class WorkOrderUpdateSerializer(serializers.Serializer):
     service_notes = serializers.CharField(required=False, allow_blank=True, max_length=20000)
 
 
+@extend_schema_serializer(component_name="WorkOrderAssign")
 class AssignSerializer(serializers.Serializer):
     technician = OrgScopedPrimaryKeyRelatedField(queryset=Technician.objects.all(), allow_null=True)
 

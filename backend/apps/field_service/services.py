@@ -56,6 +56,48 @@ def technician_for(user, organization) -> Technician | None:
     return Technician.objects.filter(organization=organization, user=user).first()
 
 
+def _release_technician(tech: Technician) -> None:
+    """Busy → available once no other job keeps them in the field. Off duty / on leave are left alone."""
+    if tech.status != Technician.Status.BUSY:
+        return
+    if not WorkOrder.objects.filter(technician=tech, status__in=FIELD_ACTIVE_STATUSES).exists():
+        Technician.objects.filter(pk=tech.pk).update(status=Technician.Status.AVAILABLE, updated_at=timezone.now())
+        tech.status = Technician.Status.AVAILABLE
+
+
+def _release_visit(wo: WorkOrder) -> None:
+    """Cancel the confirmed visit and clear the planned window (the job needs a new time)."""
+    Appointment.objects.filter(work_order=wo, status=Appointment.Status.CONFIRMED).update(
+        status=Appointment.Status.CANCELLED, updated_at=timezone.now()
+    )
+    wo.scheduled_start = wo.scheduled_end = None
+
+
+def _carry_visit(wo: WorkOrder, technician: Technician | None) -> list[str]:
+    """
+    On reassignment the booked visit follows the job: it moves to the new technician when they
+    are free at that time, otherwise it is released and the dispatcher picks a new slot.
+    """
+    appt = Appointment.objects.filter(work_order=wo, status=Appointment.Status.CONFIRMED).first()
+    if appt is None:
+        return []
+    if technician is None:
+        _release_visit(wo)
+        return []
+    try:
+        warnings = _check_slot(technician, appt.starts_at, appt.ends_at, exclude_id=appt.pk)
+        with transaction.atomic():
+            Appointment.objects.filter(pk=appt.pk).update(technician=technician, updated_at=timezone.now())
+        return warnings
+    except (Conflict, exceptions.ValidationError, IntegrityError) as exc:
+        reason = exc.detail if isinstance(exc, (Conflict, exceptions.ValidationError)) else "the slot is taken"
+        if isinstance(reason, dict):
+            reason = " ".join(str(m) for msgs in reason.values() for m in msgs)
+        _release_visit(wo)
+        when = timezone.localtime(appt.starts_at)
+        return [f"The visit on {when:%d %b %H:%M} was released: {reason} Schedule a new time."]
+
+
 # ------------------------------------------------------------------ technicians
 @transaction.atomic
 def ensure_technician_profile(membership: Membership) -> Technician:
@@ -121,8 +163,14 @@ def _lock(wo: WorkOrder) -> WorkOrder:
 
 @transaction.atomic
 def assign_technician(
-    *, tenant: TenantContext, work_order: WorkOrder, technician: Technician | None, request=None
+    *,
+    tenant: TenantContext,
+    work_order: WorkOrder,
+    technician: Technician | None,
+    request=None,
+    warnings: list[str] | None = None,
 ) -> WorkOrder:
+    """Assign, reassign or unassign. Scheduling advisories are appended to `warnings` if given."""
     wo = _lock(work_order)
     if wo.status in (WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED):
         raise DomainError("Completed or cancelled work orders cannot be reassigned.")
@@ -135,9 +183,12 @@ def assign_technician(
         if technician.organization_id != wo.organization_id or not active:
             raise exceptions.ValidationError({"technician": ["Choose an active technician from this organization."]})
     old_tech, old_status = wo.technician, wo.status
+    visit_notes = _carry_visit(wo, technician) if old_tech != technician else []
+    if warnings is not None:
+        warnings.extend(visit_notes)
     wo.technician = technician
     wo.status = WorkOrderStatus.ASSIGNED if technician else WorkOrderStatus.CREATED
-    wo.save(update_fields=["technician", "status", "updated_at"])
+    wo.save(update_fields=["technician", "status", "scheduled_start", "scheduled_end", "updated_at"])
     actor = tenant.membership.user
     _log(wo, actor, old_status, wo.status, note=f"Assigned to {technician}" if technician else "Unassigned")
     # Keep the ticket's technician in step with its active work order.
@@ -202,13 +253,12 @@ def advance(
     old = wo.status
     wo.status = to_status
     wo.save()
-    # Technician status follows the job: busy while in the field, available afterwards.
-    tech.status = (
-        Technician.Status.AVAILABLE
-        if to_status == WorkOrderStatus.COMPLETED
-        else (Technician.Status.BUSY if to_status in FIELD_ACTIVE_STATUSES else tech.status)
-    )
-    tech.save(update_fields=["status", "updated_at"])
+    # Technician status follows the job: busy while in the field, available once nothing keeps them there.
+    if to_status in FIELD_ACTIVE_STATUSES and tech.status != Technician.Status.BUSY:
+        tech.status = Technician.Status.BUSY
+        tech.save(update_fields=["status", "updated_at"])
+    elif to_status == WorkOrderStatus.COMPLETED:
+        _release_technician(tech)
     _log(wo, tenant.membership.user, old, to_status, note=note, lat=lat, lng=lng)
     if to_status == WorkOrderStatus.COMPLETED and wo.ticket_id:
         ticket_services.add_comment(
@@ -256,10 +306,8 @@ def decline(*, tenant: TenantContext, work_order: WorkOrder, reason: str, reques
         raise exceptions.ValidationError({"reason": ["Tell the dispatcher why you can't take this job."]})
     old, tech = wo.status, wo.technician
     wo.technician, wo.status = None, WorkOrderStatus.CREATED
-    wo.save(update_fields=["technician", "status", "updated_at"])
-    Appointment.objects.filter(work_order=wo, status=Appointment.Status.CONFIRMED).update(
-        status=Appointment.Status.CANCELLED, updated_at=timezone.now()
-    )
+    _release_visit(wo)
+    wo.save(update_fields=["technician", "status", "scheduled_start", "scheduled_end", "updated_at"])
     _log(wo, tenant.membership.user, old, WorkOrderStatus.CREATED, note=f"Declined by {tech}: {reason.strip()}")
     audit.record("work_order.declined", request=request, target=wo, changes={"reason": reason.strip()[:300]})
     _publish("work_order.declined", wo, technician_user_id=str(tech.user_id))
@@ -279,8 +327,8 @@ def cancel(*, tenant: TenantContext, work_order: WorkOrder, reason: str, request
     Appointment.objects.filter(work_order=wo, status=Appointment.Status.CONFIRMED).update(
         status=Appointment.Status.CANCELLED, updated_at=timezone.now()
     )
-    if wo.technician and wo.technician.status == Technician.Status.BUSY:
-        Technician.objects.filter(pk=wo.technician_id).update(status=Technician.Status.AVAILABLE)
+    if wo.technician:
+        _release_technician(wo.technician)
     _log(wo, tenant.membership.user, old, WorkOrderStatus.CANCELLED, note=reason)
     audit.record("work_order.cancelled", request=request, target=wo, changes={"reason": reason[:300]})
     _publish("work_order.status_changed", wo, old_status=old, new_status=WorkOrderStatus.CANCELLED)

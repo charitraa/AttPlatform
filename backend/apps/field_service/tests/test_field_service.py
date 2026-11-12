@@ -277,6 +277,76 @@ def test_schedule_requires_technician_and_prevents_double_booking(client_for, fs
     assert Appointment.objects.filter(work_order_id=wo1["id"], status="confirmed").count() == 1
 
 
+def test_reassigning_moves_the_visit_when_the_new_technician_is_free(client_for, fs):
+    client = client_for(fs["ops"])
+    wo = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    client.post(url(wo, "schedule/"), slot(9), format="json")
+    r = client.post(url(wo, "assign/"), {"technician": str(fs["tech2"].id)}, format="json")
+    assert r.status_code == 200 and r.json()["appointment"] and r.json()["warnings"] == []
+    appt = Appointment.objects.get(work_order_id=wo["id"], status="confirmed")
+    assert appt.technician_id == fs["tech2"].id  # off tech1's calendar, onto tech2's
+    # tech1 is free again at that time.
+    other = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    assert client.post(url(other, "schedule/"), slot(9), format="json").status_code == 200
+
+
+def test_reassigning_releases_the_visit_when_it_clashes_or_on_unassign(client_for, fs):
+    client = client_for(fs["ops"])
+    busy = make_wo(client_for, fs, technician=str(fs["tech2"].id))
+    client.post(url(busy, "schedule/"), slot(9), format="json")
+    wo = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    client.post(url(wo, "schedule/"), slot(10), format="json")
+
+    r = client.post(url(wo, "assign/"), {"technician": str(fs["tech2"].id)}, format="json")
+    body = r.json()
+    assert r.status_code == 200 and body["appointment"] is None and body["scheduled_start"] is None
+    assert len(body["warnings"]) == 1 and "WO-000001" in body["warnings"][0]
+    assert not Appointment.objects.filter(work_order_id=wo["id"], status="confirmed").exists()
+
+    client.post(url(busy, "assign/"), {"technician": None}, format="json")
+    assert not Appointment.objects.filter(work_order_id=busy["id"], status="confirmed").exists()
+    assert WorkOrder.objects.get(pk=busy["id"]).scheduled_start is None
+
+
+def test_declining_clears_the_schedule(client_for, fs):
+    wo = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    client_for(fs["ops"]).post(url(wo, "schedule/"), slot(9), format="json")
+    r = client_for(fs["t1"]).post(url(wo, "decline/"), {"reason": "Van broke down"}, format="json")
+    assert r.status_code == 200 and r.json()["scheduled_start"] is None and r.json()["appointment"] is None
+
+
+def test_technician_stays_busy_while_another_job_is_in_the_field(client_for, fs):
+    tech = client_for(fs["t1"])
+    first = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    second = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    for wo in (first, second):
+        tech.post(url(wo, "advance/"), {"status": "accepted"}, format="json")
+        tech.post(url(wo, "advance/"), {"status": "en_route"}, format="json")
+    client_for(fs["ops"]).post(url(first, "cancel/"), {"reason": "Duplicate"}, format="json")
+    fs["tech1"].refresh_from_db()
+    assert fs["tech1"].status == "busy"  # still travelling to the second job
+
+    tech.post(url(second, "advance/"), {"status": "on_site"}, format="json")
+    tech.post(url(second, "advance/"), {"status": "in_progress"}, format="json")
+    assert upload(tech, second).status_code == 201
+    r = tech.post(url(second, "advance/"), {"status": "completed", "completion_summary": "Fixed"}, format="json")
+    assert r.status_code == 200
+    fs["tech1"].refresh_from_db()
+    assert fs["tech1"].status == "available"
+
+
+def test_completing_does_not_put_an_off_duty_technician_back_on_duty(client_for, fs):
+    tech = client_for(fs["t1"])
+    wo = make_wo(client_for, fs, technician=str(fs["tech1"].id))
+    for step in ("accepted", "on_site", "in_progress"):
+        tech.post(url(wo, "advance/"), {"status": step}, format="json")
+    upload(tech, wo)
+    Technician.objects.filter(pk=fs["tech1"].pk).update(status="off_duty")  # end of shift, finishing the paperwork
+    tech.post(url(wo, "advance/"), {"status": "completed", "completion_summary": "Fixed"}, format="json")
+    fs["tech1"].refresh_from_db()
+    assert fs["tech1"].status == "off_duty"
+
+
 def test_database_refuses_overlapping_confirmed_appointments(fs, org):
     wo = WorkOrder.objects.create(organization=org, number=99, customer=fs["customer"], title="x")
     start = timezone.now() + timedelta(days=3)

@@ -21,8 +21,10 @@ function useSubmit(onClose: () => void) {
   const run = async (fn: () => Promise<unknown>, success: string) => {
     setError(null)
     try {
-      await fn()
+      const res = await fn()
       toast.success(success)
+      // e.g. reassigning releases a visit the new technician can't make
+      ;(res as { warnings?: string[] } | undefined)?.warnings?.forEach((w) => toast.warning(w))
       onClose()
     } catch (e) {
       setError(firstErrorMessage(e))

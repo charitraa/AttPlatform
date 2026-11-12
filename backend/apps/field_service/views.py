@@ -7,8 +7,9 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django_filters import rest_framework as filters
-from drf_spectacular.utils import extend_schema
-from rest_framework import exceptions, mixins, status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import exceptions, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -374,14 +375,15 @@ class WorkOrderViewSet(
     def assign(self, request, pk=None):
         s = AssignSerializer(data=request.data, context=self.get_serializer_context())
         s.is_valid(raise_exception=True)
-        return self._detail(
-            services.assign_technician(
-                tenant=request.tenant,
-                work_order=self.get_object(),
-                technician=s.validated_data["technician"],
-                request=request,
-            )
+        warnings: list[str] = []
+        wo = services.assign_technician(
+            tenant=request.tenant,
+            work_order=self.get_object(),
+            technician=s.validated_data["technician"],
+            request=request,
+            warnings=warnings,
         )
+        return self._detail(wo, warnings=warnings)
 
     @extend_schema(request=AdvanceSerializer, responses=WorkOrderDetailSerializer)
     @action(detail=True, methods=["post"])
@@ -517,7 +519,22 @@ class EvidenceDownloadView(APIView):
         return response
 
 
-@extend_schema(tags=["field service"])
+@extend_schema(
+    tags=["field service"],
+    parameters=[
+        OpenApiParameter("start", OpenApiTypes.DATETIME, required=True),
+        OpenApiParameter("end", OpenApiTypes.DATETIME, required=True, description="At most 31 days after start."),
+        OpenApiParameter("technician", OpenApiTypes.UUID, description="Limit to one technician."),
+    ],
+    responses=inline_serializer(
+        "Schedule",
+        {
+            "technicians": serializers.ListField(child=serializers.DictField()),
+            "appointments": AppointmentSerializer(many=True),
+            "availability": serializers.ListField(child=serializers.DictField()),
+        },
+    ),
+)
 class ScheduleView(APIView):
     """Appointments and availability blocks for a date range (max 31 days)."""
 

@@ -289,12 +289,88 @@
 - Technician routing uses workload and experience only until skills, availability and
   location exist (Phase 5).
 
-## Phase 5 — Field service (next)
+## Phase 5 — Field service ✅ (2026-11-12)
 
-Technicians (profiles, skills with levels, certifications, availability and time off,
-service areas, opt-in location), work orders with an explicit state machine (created
-→ assigned → accepted → en route → on site → in progress → completed / cancelled),
-appointments with overlap protection, before/after photo evidence, service notes,
-completion report and customer confirmation, routing that adds skills, availability
-and distance. Frontend: technicians list/detail, work orders list/detail, scheduling
-calendar, mobile-optimised technician view.
+### Completed
+
+**Backend** (`apps.field_service`)
+- Technicians: a profile is created automatically for anyone with the Field Technician role.
+  Profiles hold skills with levels 1–5, certifications with expiry, service areas, home base,
+  daily job limit and hourly cost. Shifts and time off are self-service for the technician and
+  managed by dispatchers otherwise. Technicians can set themselves on or off duty but not on leave.
+- Work orders: per-org references (`WO-000042`), created from a ticket (customer, asset,
+  priority and description copied; internal note added to the ticket) or standalone. State
+  machine in `lifecycle.py`: created → assigned → accepted → en route → on site → in progress →
+  completed, with cancel from any open state and "hand back" before travelling. Only the
+  assigned technician moves the field steps; every change is row-locked, logged in
+  `WorkOrderStatusLog` (with optional coordinates), audited and published as a domain event.
+- Completion requires a summary and at least one photo or document. Labour minutes are
+  measured from start of work, and labour and parts costs are computed in `Decimal`. A completion
+  note goes on the linked ticket, followed by customer sign-off (name, 1–5 rating, comment).
+- Evidence: before/after photos, documents and signatures with content-type sniffing and
+  SHA-256. Downloads are permission-checked, with `nosniff`, a sandbox CSP and inline display
+  for images only.
+- Appointments: overlap is refused by the service *and* by a PostgreSQL exclusion
+  constraint (`btree_gist`), so concurrent bookings can't both succeed. Time off blocks a slot.
+  Slots outside a shift or past the daily limit come back as warnings. Rescheduling replaces
+  the visit. Reassigning moves the visit to the new technician when they are free, otherwise
+  releases it with a warning. Declining clears the schedule.
+- Routing: `rank_technicians` scores skills 0.35, availability 0.25, workload 0.2 and
+  distance (haversine) 0.2. Blocked technicians (on leave, off duty, time off) are listed last with the
+  reason. The AI routing explanation uses the same scorer.
+- Location: opt-in per technician and only accepted while a job is en route, on site or in
+  progress. Only roles with `location.view` can read it, and pings are purged after 30 days
+  (Celery beat, scheduled by migration).
+- Schedule API (max 31 days): technicians see only their own calendar.
+- `seed_field_service`: 4 technicians across 3 service areas, two weeks of shifts, one day
+  off, an expired certificate and 12 work orders in every state.
+
+**Frontend**
+- Technicians list (search, status) and detail (skills editor, certifications, shifts and
+  time off, current jobs).
+- Work orders list (filters, search by reference) and detail (stepper, actions by
+  capability, evidence gallery with upload, completion report, sign-off, status history).
+- Dispatch dialogs: assign with ranked suggestions and the reason for each score, schedule and
+  reschedule with server warnings, hand back, cancel, complete (parts, labour), customer sign-off.
+- Weekly scheduling calendar per technician, with shifts and time off.
+- My jobs (mobile-first technician view): the most urgent job first with large step buttons,
+  directions, up-next list, recent completions awaiting sign-off, duty toggle and location
+  sharing. Location is reported at most once a minute, only while a job is under way.
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest | **217 passed**. New: automatic profiles, self-service limits, skills, create from ticket, cross-org validation, assignment syncing the ticket, full workflow with costs, only the assigned technician advances, decline and cancel, customer confirmation, evidence rules and isolation, double-booking (service and database constraint), time off and shift warnings, schedule scoping, technicians see only their own jobs, location opt-in and purge, ranking and blocks, suggestions endpoint, dashboard figures, visit follows reassignment or is released, decline clears the schedule, technician status with several jobs and off duty |
+| Frontend Vitest | **77 passed**. New: My jobs ordering and advancing, empty state and pending sign-off, duty and sharing toggles, location reported only for jobs under way (watcher cleared on unmount), reassignment warning shown to the dispatcher |
+| Lint / type-check / build | clean (field service is fully ruff-formatted) |
+| Live stack | technician endpoints through Nginx, location ping 409 with sharing off and 201 with it on, demo data seeded |
+
+### Bugs found and fixed during verification
+- **The frontend build failed**: `my-jobs-page.tsx` and `use-location-reporter.ts` had been
+  committed empty.
+- **Reassigning left the booked visit on the old technician's calendar**, which blocked their
+  time and hid the slot from the new technician's double-booking check. Unassigning left it
+  booked too. The visit now follows the job or is released with a warning.
+- **Declining kept the planned time** on the work order after its appointment was cancelled.
+- **Technician status**: completing or cancelling one job set the technician to available
+  while another job still had them in the field, and completing put an off-duty technician
+  back on duty.
+- OpenAPI: the schedule endpoint had no schema, and the work-order assign request clashed with
+  the ticket assign request (`AssignRequest`), so one replaced the other in the docs.
+
+### Known gaps carried forward
+- No visual check in a real browser in this environment (no browser installed). Covered by component tests and API checks.
+- Location is shown to dispatchers as the latest ping only. A live map comes with real-time
+  updates in Phase 6.
+- Distance is straight-line (haversine), not road distance.
+- drf-spectacular reports warnings across all apps because viewsets read `request.tenant`
+  during schema generation; to fix in Phase 8. Ruff formatting has drifted in 23 files
+  outside field service.
+
+## Phase 6 — SLA, notifications, real-time (next)
+
+Business hours, SLA policies and targets, SLA instances with a monitor task, warnings,
+breaches and escalation. Notifications (in-app, email) with preferences, WebSocket push
+and client cache invalidation. Frontend: SLA management, notification centre, live
+countdowns.
