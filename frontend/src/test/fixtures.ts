@@ -5,11 +5,11 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     'organization.view', 'organization.manage', 'users.view', 'users.manage', 'invitations.manage', 'roles.view',
     'audit.view', 'tickets.view_all', 'tickets.create', 'tickets.update', 'tickets.assign', 'tickets.archive',
     'tickets.internal_notes', 'customers.view', 'customers.manage', 'assets.view', 'assets.manage', 'ai.use',
-    'analytics.view',
+    'ai.override', 'knowledge.view', 'knowledge.manage', 'analytics.view',
   ],
   support_agent: [
     'organization.view', 'roles.view', 'users.view', 'tickets.view_all', 'tickets.create', 'tickets.update',
-    'tickets.internal_notes', 'customers.view', 'customers.manage', 'assets.view', 'ai.use',
+    'tickets.internal_notes', 'customers.view', 'customers.manage', 'assets.view', 'ai.use', 'knowledge.view',
   ],
   customer: ['organization.view', 'portal.access', 'tickets.view_own', 'tickets.create', 'feedback.submit'],
   field_technician: ['organization.view', 'tickets.view_own', 'work_orders.view_own', 'work_orders.execute'],

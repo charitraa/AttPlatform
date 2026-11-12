@@ -42,7 +42,7 @@ export const navigation: NavGroup[] = [
     label: 'AI',
     items: [
       { label: 'AI Assistant', to: '/ai/assistant', icon: Sparkles, phase: 4, summary: 'Knowledge search and troubleshooting guidance with cited sources.', permissions: ['ai.use'] },
-      { label: 'AI Insights', to: '/ai/insights', icon: BrainCircuit, phase: 4, summary: 'Recurring issues, patterns and SLA risk detected from ticket data.', permissions: ['ai.use'] },
+      { label: 'AI Insights', to: '/ai/insights', icon: BrainCircuit, phase: 4, summary: 'Recurring issues, patterns and SLA risk detected from ticket data.', permissions: ['analytics.view'] },
     ],
   },
   {

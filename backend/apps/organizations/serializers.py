@@ -20,6 +20,7 @@ class OrganizationSettingsSerializer(serializers.Serializer):
         required=False,
     )
     ai_enabled = serializers.BooleanField(required=False)
+    ai_auto_triage = serializers.BooleanField(required=False)
     ticket_auto_close_days = serializers.IntegerField(min_value=1, max_value=90, required=False)
 
     def to_internal_value(self, data):
@@ -30,7 +31,9 @@ class OrganizationSettingsSerializer(serializers.Serializer):
         return super().to_internal_value(data)
 
 
-ORGANIZATION_SETTING_DEFAULTS = {"routing_policy": "recommend", "ai_enabled": True, "ticket_auto_close_days": 7}
+ORGANIZATION_SETTING_DEFAULTS = {
+    "routing_policy": "recommend", "ai_enabled": True, "ai_auto_triage": False, "ticket_auto_close_days": 7,
+}
 
 
 class OrganizationSerializer(serializers.ModelSerializer):

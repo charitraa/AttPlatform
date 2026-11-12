@@ -16,6 +16,8 @@ export const handlers = [
     HttpResponse.json({ error: { code: 'not_authenticated', message: 'No active session.', details: null, request_id: 'x' } }, { status: 401 }),
   ),
   http.post(`${API}/auth/logout/`, () => new HttpResponse(null, { status: 204 })),
+  // Ticket pages mount the AI panel; default to "no analyses yet".
+  http.get(`${API}/tickets/:id/ai/`, () => HttpResponse.json({ analyses: [], recommendations: [], ai_enabled: true })),
   http.get(`${API}/health/`, () => HttpResponse.json(fixtures.health)),
   http.get(`${API}/health/ready/`, () => HttpResponse.json(fixtures.readyOk)),
   http.get(`${API}/meta/`, () => HttpResponse.json(fixtures.meta)),

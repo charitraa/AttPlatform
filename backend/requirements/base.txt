@@ -27,3 +27,7 @@ cryptography>=44
 whitenoise==6.12.0
 Pillow>=11
 python-magic==0.4.27  # upload content sniffing (needs libmagic)
+
+# AI engine
+anthropic>=2.8,<3
+jsonschema>=4.26,<5

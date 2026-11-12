@@ -15,6 +15,8 @@ api_v1 = [
     path("", include("apps.assets.urls")),
     path("", include("apps.tickets.urls")),
     path("", include("apps.analytics.urls")),
+    path("", include("apps.knowledge.urls")),
+    path("", include("apps.ai.urls")),
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),

@@ -161,20 +161,32 @@ internal attachments and internal history events need `tickets.internal_notes`.
 | GET / POST / PATCH / DELETE | `/assets/` | `assets.view` / `assets.manage` | Filters: `customer`, `category`, `status`, `warranty` (`active`/`expired`). Tags are upper-cased and unique per organization. Assets that have tickets can't be deleted (409); retire them instead. |
 | GET / POST | `/asset-categories/` | same | |
 
-### AI (Phase 4)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/tickets/{id}/ai/analyze/` | Enqueue classification + priority (202) |
-| POST | `/tickets/{id}/ai/summarize/` | Enqueue summary (202) |
-| POST | `/tickets/{id}/ai/route/` | Routing recommendation (202) |
-| POST | `/tickets/{id}/ai/suggest-response/` | Draft reply (202) |
-| GET | `/tickets/{id}/ai/analyses/` | Analysis history |
-| GET | `/ai/recommendations/?status=pending` | Pending recommendations |
-| POST | `/ai/recommendations/{id}/accept/` | Accept |
-| POST | `/ai/recommendations/{id}/reject/` | Reject / override with value |
-| POST | `/ai/assistant/query/` | Knowledge assistant question |
-| GET | `/ai/insights/` | Generated insights |
-| GET/POST/PATCH | `/knowledge/articles/` | Knowledge base + review workflow |
+### AI (Phase 4 ✅)
+
+AI work is asynchronous: POST endpoints return **202** with `pending` analyses. Poll
+`GET /ai/analyses/{id}/` until `status` is `completed` or `failed`. A failure never
+affects the ticket; the analysis carries a readable `error`. Every analysis records
+`provider`, `model`, `prompt_version`, `confidence`, `reasoning`, tokens, latency and
+`is_mock` (true for the offline demo provider). POSTs use the `ai` throttle scope.
+
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET | `/tickets/{id}/ai/` | `ai.use` + ticket visibility | Latest analysis per capability, recent recommendations, `ai_enabled`. |
+| POST | `/tickets/{id}/ai/` | `ai.use` | `{kinds: [classification, priority, routing, summary, response_suggestion]}` → 202. Identical input analysed in the last 10 minutes is reused. |
+| GET | `/ai/analyses/{id}/` | `ai.use` | Poll one analysis (org-scoped and ticket-visibility-scoped). |
+| GET | `/ai/recommendations/` | `ai.use` | Filters `status`, `type`, `ticket`. Types: `category`, `priority`, `assignee`, `technician`. |
+| POST | `/ai/recommendations/{id}/decide/` | `ai.override` | `{decision: accept\|reject\|override, value?, note?}`. Accept applies the suggestion (history records a person accepting it; priority source `ai`; assignment source `ai_accepted`). Override applies the person's value through normal ticket services. A second decision returns 400. |
+| GET / POST | `/ai/assistant/` | `ai.use` + `knowledge.view` | GET: caller's recent questions. POST `{question}` → 202. Answers use only published articles and resolved tickets; `output.sources` lists what was cited. |
+| GET | `/ai/insights/` | `ai.use` + `analytics.view` | Filters `type`, `is_dismissed`. |
+| POST | `/ai/insights/generate/` · `/ai/insights/{id}/dismiss/` | same | Generate: `{days: 7–180}` → 202. Also runs daily at 06:00 UTC (Celery beat). |
+| GET | `/ai/status/` | `ai.use` | Active provider and model (never the key), policies, and acceptance rates per type and prompt version (with `analytics.view`). |
+
+### Knowledge base (Phase 4 ✅)
+| Method | Path | Permission | Description |
+|--------|------|------------|-------------|
+| GET | `/knowledge/articles/` | `knowledge.view` | Readers see published articles only; editors (`knowledge.manage`) see all. `search` = full text; filters `status`, `source`, `category`. |
+| POST / PATCH / DELETE | `/knowledge/articles/` | `knowledge.manage` | New articles start as drafts. |
+| POST | `/knowledge/articles/{id}/submit/` · `publish/` · `return-to-draft/` · `archive/` | `knowledge.manage` | Review workflow; invalid moves return 400 `invalid_transition`. Publishing records the reviewer. |
 
 ### Field service (Phase 5)
 `/technicians/`, `/technicians/{id}/availability/`, `/technicians/{id}/location/`,

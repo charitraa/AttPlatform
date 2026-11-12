@@ -4,7 +4,7 @@ AI-driven ticketing and field service management platform: a modular-monolith
 Django backend, a React + TypeScript frontend, PostgreSQL, Redis, Celery,
 Django Channels, and a provider-independent AI engine.
 
-> **Status:** Phase 3 (ticketing engine) complete. See [`docs/progress.md`](docs/progress.md)
+> **Status:** Phase 4 (AI engine) complete. See [`docs/progress.md`](docs/progress.md)
 > and [`docs/development-roadmap.md`](docs/development-roadmap.md).
 
 ## Repository layout
@@ -134,8 +134,14 @@ Key points:
 - `DJANGO_SETTINGS_MODULE` picks `config.settings.dev | test | prod`. `prod` refuses
   to start with a weak `DJANGO_SECRET_KEY`.
 - `AI_PROVIDER=mock` (default) uses the offline, deterministic mock provider. Its
-  output is always flagged as demo output in the API and UI. Set `anthropic` or
-  `openai_compatible` together with `AI_API_KEY` to use a real model (Phase 4).
+  output is always flagged as demo output ("Demo AI") in the API and UI.
+  - `AI_PROVIDER=anthropic` + `AI_API_KEY=...` uses Claude (`claude-opus-5-5` by
+    default; set `AI_MODEL` to change it).
+  - `AI_PROVIDER=openai_compatible` + `AI_BASE_URL` + `AI_MODEL` (+ `AI_API_KEY`)
+    targets any OpenAI-compatible endpoint (e.g. a self-hosted model).
+  - Keys stay on the server; `/api/v1/ai/status/` reports only provider and model.
+  - Existing tickets created before AI was enabled can be processed with
+    `python manage.py ai_backfill --org acme --knowledge --insights`.
 - `NUM_PROXIES` is the number of trusted reverse proxies in front of Django (1 in
   Docker Compose, behind Nginx). Rate limiting identifies clients through
   `X-Forwarded-For` only when this is set correctly. Never set it higher than

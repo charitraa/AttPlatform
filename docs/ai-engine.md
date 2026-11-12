@@ -138,7 +138,29 @@ tools that change state — all state changes happen in services after validatio
 Analytics reports acceptance rate per capability, per prompt version and per
 confidence bucket — feeding threshold tuning for auto-apply.
 
-## 8. Mock provider
+## 8. Implementation notes (Phase 4)
+
+| Piece | Where |
+|-------|-------|
+| Provider interface, errors | `apps/ai/providers/base.py` |
+| Claude provider | `apps/ai/providers/anthropic_provider.py`: official `anthropic` SDK, `client.beta.messages.create` with `output_config.format` (JSON schema) and per-capability `effort` (low for triage, medium for writing). Server-side refusal fallback is on (`betas=["server-side-fallback-2026-07-01"], fallbacks="default"`). SDK retries are disabled because `client.py` owns retries. `stop_reason` `refusal` and `max_tokens` become typed errors. Default model `claude-opus-5-5`; override with `AI_MODEL`. |
+| OpenAI-compatible provider | `apps/ai/providers/openai_compatible.py` (standard library HTTP; `AI_BASE_URL` must be http(s)) |
+| Prompts and schemas | `apps/ai/prompts.py` (one versioned `PromptSpec` per capability) |
+| Execution, retries, breaker | `apps/ai/client.py`: transient errors are retried `AI_MAX_RETRIES` times with exponential backoff; one repair attempt for schema-invalid output; config errors and refusals fail immediately. After 5 consecutive infrastructure failures the breaker opens for 60 s. |
+| Capabilities, policies, decisions | `apps/ai/services.py` |
+| Deterministic routing | `apps/ai/routing.py`: workload 0.5, category experience 0.4, recent activity 0.1. Confidence comes from the gap between the top two candidates. |
+| Retrieval | `apps/ai/retrieval.py` (PostgreSQL FTS over published articles and resolved tickets; published articles weighted 1.25×) |
+| Triggers | `apps/ai/handlers.py`: `ticket.created` → triage (routing skipped when `routing_policy=manual`); `ticket.status_changed` → closed with resolution notes → knowledge draft |
+| Backfill | `manage.py ai_backfill --org <slug> [--knowledge] [--insights] [--requeue-pending]` |
+
+**Organization policies** (`Organization.settings`): `ai_enabled` (default true),
+`ai_auto_triage` (default **false**: auto-apply category/priority only when confident,
+the category is empty and the priority wasn't set by a person), `routing_policy`
+(`manual` | `recommend` (default) | `auto`: auto-assign only when confidence ≥
+`AI_AUTO_APPLY_MIN_CONFIDENCE` and nobody is assigned). Every automatic change is
+recorded with `actor_type=ai` in ticket history and the audit log.
+
+## 9. Mock provider
 
 `MockProvider` is deterministic and offline:
 

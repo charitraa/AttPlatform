@@ -26,6 +26,8 @@ const DashboardPage = named(() => import('@/features/dashboard/dashboard-page'),
 const CustomersPage = named(() => import('@/features/customers/customers-page'), 'CustomersPage')
 const CustomerDetailPage = named(() => import('@/features/customers/customer-detail-page'), 'CustomerDetailPage')
 const AssetsPage = named(() => import('@/features/assets/assets-page'), 'AssetsPage')
+const AssistantPage = named(() => import('@/features/ai/assistant-page'), 'AssistantPage')
+const InsightsPage = named(() => import('@/features/ai/insights-page'), 'InsightsPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -38,6 +40,8 @@ const implemented: Record<string, ReactNode> = {
   '/tickets': <TicketsPage />,
   '/customers': <CustomersPage />,
   '/assets': <AssetsPage />,
+  '/ai/assistant': <AssistantPage />,
+  '/ai/insights': <InsightsPage />,
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }

@@ -222,12 +222,79 @@
   available to Super Admins.
 - Ticket category management UI isn't built yet (the API exists).
 
-## Phase 4 — AI engine (next)
+## Phase 4 — AI engine ✅ (2026-11-12)
 
-Provider abstraction (mock, Anthropic, OpenAI-compatible) with retries, timeouts,
-schema validation and a circuit breaker; `AIAnalysis` / `AIRecommendation` storage
-with confidence and reasoning; Celery `ai` queue triggered by `ticket.created`;
-classification, priority prediction, summarisation, hybrid routing (deterministic
-scoring + LLM explanation), response suggestions, knowledge base with review flow
-and assistant, insights. Frontend: AI panel on the ticket (accept/override),
-AI Assistant and AI Insights pages, clear "Demo AI" labelling in mock mode.
+### Completed
+
+**Backend** (`apps.ai`, `apps.knowledge`)
+- Provider-independent layer: `AIProvider` interface with typed errors, plus three providers:
+  - `MockProvider`: deterministic, offline, confidence ≤ 0.75, reasoning prefixed `[mock]`.
+  - `AnthropicProvider`: official SDK, structured outputs, effort per capability,
+    server-side refusal fallback, refusal and truncation handling.
+  - `OpenAICompatibleProvider`.
+- `client.run`: retries with backoff, one repair attempt for invalid output, JSON-schema
+  validation, a circuit breaker, and every outcome persisted on `AIAnalysis` (provider,
+  model, prompt version, confidence, reasoning, tokens, latency, attempts, error,
+  `is_mock`). A provider failure never raises into business code.
+- Capabilities: classification, priority, hybrid routing (deterministic scorer + LLM
+  explanations, works with the provider down), summary, response suggestion
+  (internal notes excluded), knowledge assistant (FTS retrieval, cited sources only),
+  insights (aggregates only), knowledge extraction (draft articles).
+- Human control: `AIRecommendation` with accept / reject / override (`ai.override`),
+  supersession of stale suggestions, auto-apply only under explicit org policy and
+  above `AI_AUTO_APPLY_MIN_CONFIDENCE`, never over a person's priority choice. AI-made
+  changes are attributed `actor_type=ai` in history and audit.
+- Triggers via domain events (ticket created → triage; ticket closed → knowledge
+  draft), Celery `ai` queue, daily insights at 06:00 UTC (beat schedule via migration),
+  `ai_backfill` command (triage, knowledge, insights, re-queue stuck work).
+- Knowledge base with review workflow (draft → in review → published → archived);
+  only published articles feed answers. Acceptance-rate statistics per type and
+  prompt version.
+
+**Frontend**
+- AI panel on the ticket page: live "Analysing…" state, pending suggestions with
+  confidence and reasoning, Accept / Choose other (with reason) / Dismiss, routing
+  breakdown, summary, decision history, failure notice, "Demo AI" labelling.
+- "Suggest reply": the draft is placed in the composer for editing and never sent
+  automatically.
+- AI Assistant page (questions with steps and linked sources; Knowledge base tab with
+  the review workflow and an editor).
+- AI Insights page (insight cards with evidence, dismiss, generate on demand, demo-mode
+  notice, acceptance-rate table).
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest | **188 passed**. New: every mock output validates against its schema; Anthropic request shape (model, structured output, effort, fallback, no sampling params), error mapping, refusal and truncation handling; client retries, repair, config errors not retried, circuit breaker, unconfigured provider; triage on create; AI disabled; manual routing policy; auto-triage threshold and manual-priority protection; auto-routing with a clear winner; routing with the provider down; accept / override / reject and double decisions; permissions (agents can't decide, customers can't use AI); internal notes excluded from drafts; result reuse; org isolation; knowledge extraction → review → publish; assistant uses published sources only; insights; status never exposes the key; base-URL validation |
+| Frontend Vitest | **71 passed**. New: AI panel (suggestions, accept, override with reason, read-only for agents, failure notice, hidden without `ai.use`), suggest-reply fills the composer without sending, assistant answers and sources, knowledge review and publish, insights list, generate and wait, dismiss, acceptance table |
+| Lint / type-check / build | clean |
+
+### Bugs found and fixed during verification
+- **Worker silently dropped AI tasks in Docker** ("unregistered task"). Compose built
+  separate images for backend, worker and beat, and only the backend image had the
+  new dependencies. All three now share one image tag. `ai_backfill --requeue-pending`
+  recovers analyses whose messages were dropped.
+- The auto-assignment audit entry lacked the organization (it came from the HTTP
+  request, which automatic changes don't have).
+- Effect-driven "wait for analysis" logic in the UI was replaced with an awaited
+  polling helper (`waitForAnalysis`) with a timeout.
+
+### Known gaps carried forward
+- No live run against a real model in this environment (no API key configured). The
+  Anthropic provider is covered by request-shape and error-mapping tests against a fake
+  SDK client.
+- Retrieval is keyword full-text search; semantic search (pgvector + embeddings) is the
+  planned upgrade behind `retrieval.search`.
+- Technician routing uses workload and experience only until skills, availability and
+  location exist (Phase 5).
+
+## Phase 5 — Field service (next)
+
+Technicians (profiles, skills with levels, certifications, availability and time off,
+service areas, opt-in location), work orders with an explicit state machine (created
+→ assigned → accepted → en route → on site → in progress → completed / cancelled),
+appointments with overlap protection, before/after photo evidence, service notes,
+completion report and customer confirmation, routing that adds skills, availability
+and distance. Frontend: technicians list/detail, work orders list/detail, scheduling
+calendar, mobile-optimised technician view.

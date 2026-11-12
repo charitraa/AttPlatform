@@ -5,10 +5,7 @@ Write-side ticket logic. Every mutation:
   * publishes a domain event for other modules (AI, SLA, notifications) on commit.
 """
 
-import hashlib
-from pathlib import Path
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import exceptions
@@ -16,6 +13,7 @@ from rest_framework import exceptions
 from apps.audit import services as audit
 from apps.core import events
 from apps.core.exceptions import DomainError, InvalidTransition
+from apps.core.uploads import validate_upload
 from apps.customers.models import Customer
 from apps.organizations.catalog import RoleCode
 from apps.organizations.models import Membership
@@ -30,30 +28,13 @@ AGENT_ROLES = frozenset({RoleCode.SUPPORT_AGENT, RoleCode.OPS_MANAGER, RoleCode.
 TECHNICIAN_ROLES = frozenset({RoleCode.FIELD_TECHNICIAN})
 UNSET = object()  # "leave this assignee unchanged"
 
-# Upload allow-list: extension → acceptable sniffed MIME types.
-ALLOWED_UPLOADS: dict[str, frozenset[str]] = {
-    ".png": frozenset({"image/png"}),
-    ".jpg": frozenset({"image/jpeg"}),
-    ".jpeg": frozenset({"image/jpeg"}),
-    ".webp": frozenset({"image/webp"}),
-    ".gif": frozenset({"image/gif"}),
-    ".heic": frozenset({"image/heic", "image/heif"}),
-    ".pdf": frozenset({"application/pdf"}),
-    ".txt": frozenset({"text/plain"}),
-    ".log": frozenset({"text/plain"}),
-    ".csv": frozenset({"text/csv", "text/plain", "application/csv"}),
-    ".docx": frozenset({"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/zip"}),
-    ".xlsx": frozenset({"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip"}),
-    ".zip": frozenset({"application/zip"}),
-}
-
-
 # ------------------------------------------------------------------------ helpers
-def _history(ticket, actor, event, *, field="", old=None, new=None, internal=False, actor_type="user"):
+def _history(ticket, actor, event, *, field="", old=None, new=None, internal=False, actor_type=None):
+    """`actor_type` defaults to user (with an actor) or system (without); pass "ai" for AI-made changes."""
     TicketHistory.objects.create(
         ticket=ticket,
         actor=actor,
-        actor_type=actor_type if actor else TicketHistory.ActorType.SYSTEM,
+        actor_type=actor_type or (TicketHistory.ActorType.USER if actor else TicketHistory.ActorType.SYSTEM),
         event=event,
         field=field,
         old_value=old,
@@ -278,8 +259,16 @@ def assign_ticket(
     source: str = TicketAssignment.Source.MANUAL,
     request=None,
 ) -> Ticket:
+    return assign(organization=tenant.organization, actor=tenant.membership.user, ticket=ticket, agent_id=agent_id,
+                  technician_id=technician_id, source=source, request=request)
+
+
+@transaction.atomic
+def assign(*, organization, actor, ticket: Ticket, agent_id=UNSET, technician_id=UNSET,
+           source: str = TicketAssignment.Source.MANUAL, request=None) -> Ticket:
+    """Assignment core. `actor` may be None for policy-driven automatic (AI) assignment."""
     ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
-    actor, org = tenant.membership.user, tenant.organization
+    org = organization
     if ticket.archived_at or ticket.status == TicketStatus.CLOSED:
         raise DomainError("Closed or archived tickets cannot be reassigned.")
 
@@ -310,7 +299,7 @@ def assign_ticket(
             field=field,
             old=_display(old_user),
             new=_display(new_user),
-            actor_type="ai" if source == TicketAssignment.Source.AI_AUTO else "user",
+            actor_type="ai" if source == TicketAssignment.Source.AI_AUTO else None,
         )
 
     if not changed:
@@ -320,7 +309,10 @@ def assign_ticket(
         _history(ticket, actor, "status_changed", field="status", old=ticket.status, new=TicketStatus.ASSIGNED)
         ticket.status = TicketStatus.ASSIGNED
     ticket.save()
-    audit.record("ticket.assigned", request=request, target=ticket, changes=changed)
+    audit.record(
+        "ticket.assigned", request=request, actor=actor, organization=org, target=ticket, changes=changed,
+        actor_type="ai" if source == TicketAssignment.Source.AI_AUTO else None,
+    )
     _publish(
         "ticket.assigned",
         ticket,
@@ -379,14 +371,6 @@ def add_comment(
 
 
 # -------------------------------------------------------------------- attachments
-def _sniff_mime(fileobj) -> str:
-    import magic
-
-    head = fileobj.read(4096)
-    fileobj.seek(0)
-    return magic.from_buffer(head, mime=True)
-
-
 @transaction.atomic
 def add_attachment(
     *, tenant: TenantContext, ticket: Ticket, upload, visibility: str, comment=None, request=None
@@ -397,33 +381,16 @@ def add_attachment(
     if ticket.archived_at:
         raise DomainError("Archived tickets cannot receive attachments.")
 
-    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
-    if upload.size > max_bytes:
-        raise exceptions.ValidationError({"file": [f"Files must be {settings.MAX_UPLOAD_SIZE_MB} MB or smaller."]})
-    if upload.size == 0:
-        raise exceptions.ValidationError({"file": ["The file is empty."]})
-    original_name = Path(upload.name).name[:255]
-    ext = Path(original_name).suffix.lower()
-    if ext not in ALLOWED_UPLOADS:
-        allowed = ", ".join(sorted(ALLOWED_UPLOADS))
-        raise exceptions.ValidationError({"file": [f"This file type is not allowed. Allowed: {allowed}."]})
-    sniffed = _sniff_mime(upload)
-    if sniffed not in ALLOWED_UPLOADS[ext]:
-        # The content doesn't match the extension (e.g. an executable renamed to .pdf).
-        raise exceptions.ValidationError({"file": ["The file content does not match its extension."]})
-
-    digest = hashlib.sha256()
-    for chunk in upload.chunks():
-        digest.update(chunk)
-    upload.seek(0)
+    checked = validate_upload(upload)
+    original_name = checked.original_name
 
     attachment = TicketAttachment(
         ticket=ticket,
         comment=comment,
         original_name=original_name,
-        content_type=sniffed,
-        size_bytes=upload.size,
-        sha256=digest.hexdigest(),
+        content_type=checked.content_type,
+        size_bytes=checked.size,
+        sha256=checked.sha256,
         visibility=visibility,
         uploaded_by=user,
     )
@@ -455,4 +422,40 @@ def set_archived(*, tenant: TenantContext, ticket: Ticket, archived: bool, reque
     ticket.save(update_fields=["archived_at", "updated_at"])
     _history(ticket, tenant.membership.user, "archived" if archived else "unarchived", internal=True)
     audit.record("ticket.archived" if archived else "ticket.unarchived", request=request, target=ticket)
+    return ticket
+
+
+# ----------------------------------------------------------- AI-driven changes
+AI_APPLICABLE_FIELDS = {"category", "priority"}
+
+
+@transaction.atomic
+def apply_field_change(*, ticket: Ticket, field: str, value, actor=None, request=None, reason: str = "") -> Ticket:
+    """
+    Apply a single field value that originated from an AI recommendation.
+
+    `actor=None` means the change was applied automatically under an explicit org
+    policy (history and audit record actor_type=ai). With an actor, a person
+    accepted the recommendation. Either way `priority_source` becomes "ai".
+    """
+    if field not in AI_APPLICABLE_FIELDS:
+        raise ValueError(f"AI may not change '{field}'.")
+    ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    if ticket.archived_at or ticket.status == TicketStatus.CLOSED:
+        raise DomainError("Closed or archived tickets cannot be changed.")
+    old = getattr(ticket, field)
+    if old == value:
+        return ticket
+    setattr(ticket, field, value)
+    if field == "priority":
+        ticket.priority_source = Ticket.PrioritySource.AI
+    ticket.save()
+    actor_type = None if actor else TicketHistory.ActorType.AI
+    _history(ticket, actor, "field_changed", field=field, old=_display(old), new=_display(value), actor_type=actor_type)
+    audit.record(
+        "ticket.ai_change_applied", request=request, actor=actor, organization=ticket.organization, target=ticket,
+        actor_type="user" if actor else "ai",
+        changes={field: {"from": _display(old), "to": _display(value)}, "reason": reason[:300]},
+    )
+    _publish("ticket.updated", ticket, fields=[field], by_ai=actor is None)
     return ticket

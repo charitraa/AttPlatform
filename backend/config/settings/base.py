@@ -59,6 +59,8 @@ LOCAL_APPS = [
     "apps.assets",
     "apps.tickets",
     "apps.analytics",
+    "apps.knowledge",
+    "apps.ai",
 ]
 AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -264,6 +266,7 @@ AI_API_KEY = env("AI_API_KEY", default="")
 AI_BASE_URL = env("AI_BASE_URL", default="")
 AI_TIMEOUT_SECONDS = env.float("AI_TIMEOUT_SECONDS", default=30.0)
 AI_MAX_RETRIES = env.int("AI_MAX_RETRIES", default=3)
+AI_RETRY_BACKOFF_SECONDS = env.float("AI_RETRY_BACKOFF_SECONDS", default=0.5)
 AI_AUTO_APPLY_MIN_CONFIDENCE = env.float("AI_AUTO_APPLY_MIN_CONFIDENCE", default=0.85)
 
 # Symmetric key(s) for encrypting integration credentials at rest (Fernet).

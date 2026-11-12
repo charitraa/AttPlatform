@@ -25,6 +25,7 @@ STORAGES = {
 
 AI_PROVIDER = "mock"
 AI_API_KEY = ""
+AI_RETRY_BACKOFF_SECONDS = 0
 
 # Throttling is disabled globally in tests; throttle tests opt in explicitly.
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
