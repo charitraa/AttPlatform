@@ -16,6 +16,7 @@ Inbound webhooks
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -509,7 +510,8 @@ def _apply_inbound(event: WebhookEvent) -> dict:
             "description": body,
             "customer": customer,
             "contact": contact if contact and contact.customer_id == customer.id else None,
-            "channel": integration.config.get("channel") or Ticket.Channel.API,
+            "channel": integration.config.get("channel")
+            or (Ticket.Channel.EMAIL if integration.kind == Integration.Kind.EMAIL else Ticket.Channel.API),
             "tags": ["inbound"],
         },
     )
@@ -521,3 +523,70 @@ def _apply_inbound(event: WebhookEvent) -> dict:
         _skip_status_side_effects=True,
     )
     return {"action": "ticket", "ticket_id": str(ticket.id), "reference": ticket.reference}
+
+
+# ------------------------------------------------------------------ mailboxes
+def poll_mailbox(integration: Integration) -> dict:
+    """Read new matching emails (read-only) and process each once. Returns counts."""
+    import imaplib
+
+    from . import mailbox
+    from .connectors import connector_for
+
+    cfg = integration.config
+    counts = {"new": 0, "duplicates": 0, "skipped": 0}
+    try:
+        client = connector_for(integration).open()
+    except (imaplib.IMAP4.error, OSError, ConnectorError, net.UnsafeURL, net.EgressError) as exc:
+        logs.record(
+            integration,
+            direction=IntegrationLog.Direction.INBOUND,
+            operation="poll",
+            ok=False,
+            error=f"Can't sign in: {exc}"[:300],
+        )
+        return counts
+    try:
+        found = mailbox.fetch_new(
+            client, folder=cfg.get("folder") or "INBOX", only_to=cfg["only_to"], since=integration.created_at
+        )
+    except (imaplib.IMAP4.error, OSError, ValueError) as exc:
+        logs.record(integration, direction=IntegrationLog.Direction.INBOUND, operation="poll", ok=False, error=str(exc))
+        return counts
+    finally:
+        with contextlib.suppress(Exception):  # closing is best effort
+            client.logout()
+    for uid_key, msg in found:
+        if msg.automatic or not msg.body:
+            counts["skipped"] += 1
+            continue
+        external_id = msg.message_id or uid_key
+        payload = {
+            "id": external_id,
+            "from": {"email": msg.sender_email, "name": msg.sender_name},
+            "subject": msg.subject,
+            "body": msg.body,
+        }
+        try:
+            with transaction.atomic():
+                event = WebhookEvent.objects.create(
+                    organization_id=integration.organization_id,
+                    integration=integration,
+                    external_id=external_id,
+                    headers={"source": "imap"},
+                    payload=payload,
+                    signature_valid=True,
+                )
+        except IntegrityError:
+            counts["duplicates"] += 1
+            continue
+        counts["new"] += 1
+        process_inbound(event.pk)
+    logs.record(
+        integration,
+        direction=IntegrationLog.Direction.INBOUND,
+        operation="poll",
+        ok=True,
+        response=f"{counts['new']} new, {counts['duplicates']} already seen, {counts['skipped']} skipped",
+    )
+    return counts

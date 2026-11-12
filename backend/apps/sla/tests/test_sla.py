@@ -353,3 +353,22 @@ def test_business_hours_api(client_for, setup, org):
     assert ok.json()["schedule"]["mon"] == [["22:00", "24:00"]] and ok.json()["schedule"]["tue"] == []
     used = BusinessHours.objects.get(organization=org, name="Standard hours")
     assert ops.delete(f"/api/v1/sla/business-hours/{used.id}/").status_code == 409  # the default policy uses it
+
+
+def test_restamp_rebuilds_a_back_dated_timeline_without_side_effects(client_for, setup, org,
+                                                                    django_capture_on_commit_callbacks):
+    always(org)
+    ticket = create(client_for, setup)  # high: 1 h response, 8 h resolution (24/7)
+    start = timezone.now() - timedelta(days=3)
+    Ticket.objects.filter(pk=ticket.pk).update(created_at=start, first_response_at=start + timedelta(minutes=20),
+                                               resolved_at=start + timedelta(hours=10), status="resolved")
+    ticket.refresh_from_db()
+    with django_capture_on_commit_callbacks() as callbacks:
+        sla = services.restamp(ticket)
+    assert callbacks == []  # nothing published: no notifications or webhooks
+    assert sla.started_at == start and sla.response_status == "met" and sla.resolution_status == "breached"
+    types = list(sla.events.values_list("type", "metric"))
+    assert types == [("applied", ""), ("met", "response"), ("breached", "resolution")]
+    assert sla.events.get(type="breached").occurred_at == start + timedelta(hours=8)
+    ticket.refresh_from_db()
+    assert ticket.due_at is None  # resolved: no running deadline

@@ -125,6 +125,10 @@ class IntegrationSerializer(serializers.ModelSerializer):
             missing = [f.name for f in cls.secrets if f.required and not given.get(f.name)]
             if missing:
                 raise serializers.ValidationError({"secrets": [f"Required: {', '.join(missing)}."]})
+            try:
+                cls.validate_secrets(given)
+            except ValueError as exc:
+                raise serializers.ValidationError(exc.args[0]) from exc
         name = (attrs.get("name") or (self.instance.name if self.instance else "")).strip()
         qs = Integration.objects.filter(organization=self.context["request"].organization, name__iexact=name)
         if self.instance:

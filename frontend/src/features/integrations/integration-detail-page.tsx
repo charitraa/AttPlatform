@@ -377,13 +377,13 @@ export function IntegrationDetailPage() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
           {i.kind === 'webhook' && <TabsTrigger value="endpoints">Endpoints</TabsTrigger>}
           {i.kind === 'webhook' && <TabsTrigger value="deliveries">Deliveries</TabsTrigger>}
-          {i.kind === 'inbound' && <TabsTrigger value="inbound">Received</TabsTrigger>}
+          {(i.kind === 'inbound' || i.kind === 'email') && <TabsTrigger value="inbound">Received</TabsTrigger>}
           <TabsTrigger value="logs">Activity log</TabsTrigger>
         </TabsList>
         <TabsContent value="settings" className="pt-4"><Settings key={i.updated_at} i={i} /></TabsContent>
         {i.kind === 'webhook' && <TabsContent value="endpoints" className="pt-4"><Endpoints i={i} /></TabsContent>}
         {i.kind === 'webhook' && <TabsContent value="deliveries" className="pt-4"><Deliveries i={i} /></TabsContent>}
-        {i.kind === 'inbound' && <TabsContent value="inbound" className="pt-4"><Inbound i={i} /></TabsContent>}
+        {(i.kind === 'inbound' || i.kind === 'email') && <TabsContent value="inbound" className="pt-4"><Inbound i={i} /></TabsContent>}
         <TabsContent value="logs" className="pt-4"><Logs i={i} /></TabsContent>
       </Tabs>
     </div>

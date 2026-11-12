@@ -337,3 +337,72 @@ def compliance(organization, *, start: datetime, end: datetime) -> dict:
 def compliance_rate(organization, days: int = 30) -> float | None:
     now = timezone.now()
     return compliance(organization, start=now - timedelta(days=days), end=now)["resolution_compliance"]
+
+
+# ------------------------------------------------------------------ rebuilding
+def restamp(ticket: Ticket, *, now: datetime | None = None) -> SLAInstance | None:
+    """
+    Rebuild a ticket's SLA clock from its actual timeline (created, first response, resolved),
+    without publishing events or notifying anyone. For demo seeding and data repair; normal
+    operation uses `sync_ticket`. Outcomes are decided by comparing real times with deadlines.
+    """
+    now = now or timezone.now()
+    SLAInstance.objects.filter(ticket=ticket).delete()
+    if ticket.archived_at:
+        Ticket.objects.filter(pk=ticket.pk).update(due_at=None)
+        return None
+    match = select_policy(ticket)
+    if match is None:
+        Ticket.objects.filter(pk=ticket.pk).update(due_at=None)
+        return None
+    policy, target = match
+    sla = SLAInstance(
+        organization_id=ticket.organization_id,
+        ticket=ticket,
+        policy=policy,
+        policy_name=policy.name,
+        business_hours=policy.business_hours,
+        priority=ticket.priority,
+        response_minutes=target.first_response_minutes,
+        resolution_minutes=target.resolution_minutes,
+        warning_threshold_pct=target.warning_threshold_pct,
+        started_at=ticket.created_at,
+    )
+    _compute(sla, calendar_for(policy.business_hours))
+    timeline: list[tuple[datetime, str, str]] = [(sla.started_at, SLAEvent.Type.APPLIED, "")]
+
+    def decide(metric, done_at, due, warn):
+        if done_at:
+            ok = done_at <= due
+            timeline.append((done_at if ok else due, SLAEvent.Type.MET if ok else SLAEvent.Type.BREACHED, metric))
+            if not ok:
+                timeline.append((done_at, SLAEvent.Type.MET, metric))
+            return MetricStatus.MET if ok else MetricStatus.BREACHED
+        if now >= due:
+            timeline.append((due, SLAEvent.Type.BREACHED, metric))
+            return MetricStatus.BREACHED
+        if now >= warn:
+            timeline.append((warn, SLAEvent.Type.WARNING, metric))
+            return MetricStatus.WARNING
+        return MetricStatus.ON_TRACK
+
+    responded = ticket.first_response_at or ticket.resolved_at
+    sla.responded_at = responded
+    sla.response_status = decide(SLAEvent.Metric.RESPONSE, responded, sla.response_due_at, sla.response_warn_at)
+    stopped = ticket.status in STOPPED_STATUSES and ticket.resolved_at
+    sla.resolved_at = ticket.resolved_at if stopped else None
+    sla.resolution_status = decide(
+        SLAEvent.Metric.RESOLUTION, sla.resolved_at, sla.resolution_due_at, sla.resolution_warn_at
+    )
+    if stopped:
+        sla.paused_at = ticket.resolved_at
+    elif ticket.status in PAUSING_STATUSES:
+        sla.paused_at = now
+    sla.save()
+    for at, type_, metric in sorted(timeline, key=lambda t: t[0]):
+        if type_ == SLAEvent.Type.MET and metric and sla.__dict__[f"{metric}_status"] == MetricStatus.BREACHED:
+            continue  # a late finish is recorded as the breach only
+        ev = SLAEvent.objects.create(sla=sla, type=type_, metric=metric, payload={"rebuilt": True})
+        SLAEvent.objects.filter(pk=ev.pk).update(occurred_at=at)
+    _mirror_due_at(sla)
+    return sla

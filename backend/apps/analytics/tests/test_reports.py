@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -22,13 +22,15 @@ def data(org, make_member):
     agent.user.first_name, agent.user.last_name = "Ana", "Agent"
     agent.user.save()
     customer = Customer.objects.create(organization=org, name="=cmd|' /C calc'!A0")  # CSV-injection probe
-    base = datetime(2026, 11, 10, 4, 0, tzinfo=timezone.utc)  # 09:45 in Kathmandu on 10 Nov
+    base = datetime(2026, 11, 10, 4, 0, tzinfo=UTC)  # 09:45 in Kathmandu on 10 Nov
     tickets = []
     for i, (hours, resolved) in enumerate([(2, True), (6, True), (0, False)]):
-        t = Ticket.objects.create(organization=org, number=i + 1, title=f"T{i}", description="d", customer=customer,
-                                  assigned_agent=agent.user)
+        t = Ticket.objects.create(
+            organization=org, number=i + 1, title=f"T{i}", description="d", customer=customer, assigned_agent=agent.user
+        )
         Ticket.objects.filter(pk=t.pk).update(
-            created_at=base, first_response_at=base + timedelta(hours=1),
+            created_at=base,
+            first_response_at=base + timedelta(hours=1),
             resolved_at=base + timedelta(hours=hours) if resolved else None,
             status="resolved" if resolved else "open",
         )
@@ -52,8 +54,17 @@ def test_ticket_volume_uses_the_organization_day(client_for, data):
 def test_agent_performance_and_satisfaction(client_for, data):
     client = client_for(data["ops"])
     agents = client.get(f"/api/v1/analytics/reports/agent_performance/{Q}").json()["rows"]
-    assert agents == [{"agent": "Ana Agent", "assigned": 3, "resolved": 2, "avg_first_response_h": 1.0,
-                       "avg_resolution_h": 4.0, "sla_breaches": 0, "reopened": 0}]
+    assert agents == [
+        {
+            "agent": "Ana Agent",
+            "assigned": 3,
+            "resolved": 2,
+            "avg_first_response_h": 1.0,
+            "avg_resolution_h": 4.0,
+            "sla_breaches": 0,
+            "reopened": 0,
+        }
+    ]
     sat = client.get(f"/api/v1/analytics/reports/customer_satisfaction/{Q}").json()["rows"]
     assert sat[0]["responses"] == 2 and sat[0]["avg_rating"] == 3.5 and sat[0]["unhappy"] == 1
 

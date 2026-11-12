@@ -19,7 +19,7 @@ import { type Connector, useCatalog, useIntegrationMutations, useIntegrations } 
 import { ConnectorFields, HealthDot, SecretOnceDialog } from './components'
 import { fieldErrors } from './field-errors'
 
-const KIND_LABEL: Record<string, string> = { webhook: 'Webhooks', inbound: 'Inbound', sms: 'SMS', whatsapp: 'WhatsApp', rest_api: 'REST' }
+const KIND_LABEL: Record<string, string> = { webhook: 'Webhooks', inbound: 'Inbound', email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp', rest_api: 'REST' }
 
 function AddDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate()

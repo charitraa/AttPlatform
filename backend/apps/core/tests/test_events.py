@@ -48,3 +48,12 @@ def test_on_commit_handler_skipped_on_rollback():
         events.publish("ticket.created", ticket_id="t-3")
         raise RuntimeError("rollback")
     assert received == []
+
+
+def test_muted_blocks_every_subscriber():
+    received = []
+    events.subscribe("demo.thing")(received.append)
+    with events.muted():
+        events.publish("demo.thing", x=1)
+    events.publish("demo.thing", x=2)
+    assert [e.payload["x"] for e in received] == [2]

@@ -82,6 +82,10 @@ class Connector:
             raise ValueError(errors)
         return cleaned
 
+    @classmethod
+    def validate_secrets(cls, given: dict) -> None:
+        """Cross-field checks on secrets at creation (raise ValueError(field-keyed dict))."""
+
     def secret(self, name: str) -> str:
         value = self.integration.secret(name)
         if not value:

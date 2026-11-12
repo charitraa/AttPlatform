@@ -1,5 +1,6 @@
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -120,7 +121,7 @@ class PortalTicketViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
         return self._move(request, TicketStatus.REOPENED)
 
 
-@extend_schema(tags=["portal"])
+@extend_schema(tags=["portal"], responses=OpenApiTypes.OBJECT)
 class PortalOptionsView(APIView):
     """Choices for the new-ticket form: active categories and the customer's own assets."""
 

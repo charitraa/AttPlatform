@@ -497,3 +497,49 @@ def test_whatsapp_requires_a_template_and_console_sms_logs(client_for, team):
     )
     assert ok.json()["status"] == "logged"
     assert client.get(f"/api/v1/integrations/{console['id']}/logs/").json()["count"] == 1
+
+
+def test_twilio_with_an_api_key_and_number_check(client_for, team):
+    client = client_for(team["admin"])
+    assert (
+        client.post(
+            "/api/v1/integrations/",
+            {
+                "kind": "sms",
+                "provider": "twilio",
+                "name": "No creds",
+                "config": {"from_number": "+15005550006"},
+                "secrets": {"account_sid": "AC123"},
+            },
+            format="json",
+        ).status_code
+        == 400
+    )  # needs a key or a token
+    i = client.post(
+        "/api/v1/integrations/",
+        {
+            "kind": "sms",
+            "provider": "twilio",
+            "name": "Twilio key",
+            "config": {"from_number": "+15005550006"},
+            "secrets": {"account_sid": "AC123", "api_key_sid": "SK999", "api_key_secret": "key-secret"},
+        },
+        format="json",
+    )
+    assert i.status_code == 201, i.json()
+    seen = {}
+
+    def fake_request(method, url, *, body=None, headers=None, timeout=None):
+        import base64 as b64
+
+        seen["url"], seen["user"] = url, b64.b64decode(headers["Authorization"].split()[1]).decode().split(":")[0]
+        listed = [{"phone_number": "+15005550006", "capabilities": {"sms": True}}] if "15005550006" in url else []
+        return net.Response(200, json.dumps({"incoming_phone_numbers": listed}).encode(), {}, 5)
+
+    with mock.patch.object(net, "request", fake_request):
+        r = client.post(f"/api/v1/integrations/{i.json()['id']}/test/").json()
+    assert r == {"ok": True, "message": "Connected. +15005550006 is ready to send SMS."}
+    assert (
+        seen["user"] == "SK999"
+        and "/Accounts/AC123/IncomingPhoneNumbers.json?PhoneNumber=%2B15005550006" in seen["url"]
+    )

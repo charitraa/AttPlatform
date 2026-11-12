@@ -22,3 +22,21 @@ def process_inbound(event_id: str) -> str:
     from .services import process_inbound as run
 
     return run(event_id)
+
+
+@shared_task(name="integrations.poll_mailboxes", queue="webhooks")
+def poll_mailboxes() -> dict:
+    """Every 2 minutes (beat): check each enabled email-to-ticket mailbox. Overlapping runs are skipped."""
+    from django.core.cache import cache
+
+    from .models import Integration
+    from .services import poll_mailbox
+
+    if not cache.add("integrations:poll_mailboxes", 1, timeout=110):
+        return {"skipped": "already running"}
+    try:
+        return {
+            str(i.pk): poll_mailbox(i) for i in Integration.objects.filter(kind=Integration.Kind.EMAIL, is_enabled=True)
+        }
+    finally:
+        cache.delete("integrations:poll_mailboxes")

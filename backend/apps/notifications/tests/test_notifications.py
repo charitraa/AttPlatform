@@ -67,6 +67,7 @@ def test_assignment_notifies_the_assignee_in_app_and_by_email(
     assert n.deliveries.get().status == "sent"
     assert len(mail.outbox) == 1 and mail.outbox[0].to == ["agent@acme.test"]
     assert f"/tickets/{ticket.id}" in mail.outbox[0].body
+    assert mail.outbox[0].extra_headers["Auto-Submitted"] == "auto-generated"  # never answered by mailboxes
 
 
 def test_assigning_yourself_sends_nothing(client_for, team, ticket, django_capture_on_commit_callbacks):
@@ -187,7 +188,7 @@ def test_email_delivery_retries_then_fails_and_never_double_sends(team, org):
     # `self.retry()` re-raises the original error, which is what schedules the next attempt on a worker.
     services.notify(organization=org, recipients=[team["agent"].user], type="ticket_assigned", title="x")
     d = NotificationDelivery.objects.get()
-    with mock.patch("apps.notifications.tasks.send_mail", side_effect=OSError("SMTP down")) as send:
+    with mock.patch("apps.notifications.tasks.EmailMessage.send", side_effect=OSError("SMTP down")) as send:
         for _ in range(4):
             with pytest.raises(OSError):
                 deliver_email.run(str(d.id))

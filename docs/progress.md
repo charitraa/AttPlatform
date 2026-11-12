@@ -528,11 +528,26 @@
 ### Known gaps carried forward
 - SMS/WhatsApp are wired as connectors (send + test) but not yet as notification channels in
   preferences; Twilio/WhatsApp were verified by request-shape tests only (no accounts here).
-- Email-to-ticket needs a mailbox bridge (IMAP poller or a provider's inbound-parse) posting to the inbound webhook.
+- ~~Email-to-ticket~~ done (follow-up below).
 - `PUBLIC_API_URL` should be set so inbound URLs shown in the UI are reachable from outside (falls back to `FRONTEND_URL`).
 - Webhook delivery holds a row lock during the HTTP call (≤10 s); fine at this scale, revisit with a "sending" state if volume grows.
-- Demo data is still old (SLA compliance 0 % in the demo org); re-date the seed.
+- ~~Demo data is old~~ fixed with `reset_demo` (follow-up below).
 - No visual check in a real browser in this environment.
+
+### Follow-up: email to ticket and fresh demo data (2026-11-12)
+- **Email to ticket** (`email/imap` connector, beat every 2 min): only mail sent to a dedicated address
+  (`only_to`, e.g. a Gmail plus-address), received after set-up, opened read-only with `BODY.PEEK` (nothing
+  marked read, moved or deleted), automatic mail skipped (`Auto-Submitted`, bulk/list, our own
+  `X-ATT-Notification`, now set on every notification email so they can never loop), one ticket per
+  `Message-ID`, quoted history stripped from replies, IMAP host through the SSRF guard with IP pinning.
+  Verified live with Gmail: a test email became a ticket; the next poll saw it as a duplicate.
+  Fixed during the live run: a `Date` header without a time zone crashed the comparison.
+- **`reset_demo`**: rebuilds the demo org's activity around today with events muted (no email, webhooks or AI
+  calls): ticket timelines drawn against the real SLA targets in working time, history and replies dated to
+  match, SLA clocks rebuilt from the timeline (`sla.services.restamp`), work orders, 25 customer ratings and
+  in-app notifications. Result: 70 % resolution compliance instead of 0 %. Re-runs are repeatable (assets are
+  now get-or-create).
+- `events.muted()` context manager for bulk operations.
 
 ## Phase 8 — Hardening (next)
 

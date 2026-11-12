@@ -22,6 +22,7 @@ class Integration(BaseModel):
     class Kind(models.TextChoices):
         WEBHOOK = "webhook", "Outbound webhooks"
         INBOUND = "inbound", "Inbound webhook"
+        EMAIL = "email", "Email to ticket"
         SMS = "sms", "SMS"
         WHATSAPP = "whatsapp", "WhatsApp"
         REST_API = "rest_api", "REST API"

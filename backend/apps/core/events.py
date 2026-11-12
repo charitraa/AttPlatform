@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
@@ -57,8 +59,27 @@ def _run(handler: Handler, event: Event) -> None:
         logger.exception("Event handler %s failed for %s", getattr(handler, "__qualname__", handler), event.name)
 
 
+_muted: ContextVar[bool] = ContextVar("events_muted", default=False)
+
+
+@contextmanager
+def muted():
+    """
+    Publish nothing inside this block (bulk seeding / data repair). Subscribers such as
+    notifications, webhooks, AI triage and SLA sync don't run, so callers must restore
+    any derived state themselves (e.g. `sla.services.restamp`).
+    """
+    token = _muted.set(True)
+    try:
+        yield
+    finally:
+        _muted.reset(token)
+
+
 def publish(name: str, **payload) -> Event:
     event = Event(name=name, payload=payload)
+    if _muted.get():
+        return event
     for handler, deferred in list(_handlers.get(name, ())):
         if deferred:
             transaction.on_commit(partial(_run, handler, event))

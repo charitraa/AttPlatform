@@ -2,7 +2,7 @@ import logging
 
 from celery import shared_task
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage
 from django.db import transaction
 from django.utils import timezone
 
@@ -36,7 +36,14 @@ def deliver_email(self, delivery_id: str) -> str:
             f"— {n.organization.name} · You can change which emails you get under Notifications → Preferences."
         )
         try:
-            send_mail(f"[{n.organization.name}] {n.title}", body, settings.DEFAULT_FROM_EMAIL, [n.recipient.email])
+            EmailMessage(
+                f"[{n.organization.name}] {n.title}",
+                body,
+                settings.DEFAULT_FROM_EMAIL,
+                [n.recipient.email],
+                # Marks the mail as automatic so mailboxes (and our own email-to-ticket) never act on it.
+                headers={"Auto-Submitted": "auto-generated", "X-ATT-Notification": n.type},
+            ).send()
         except Exception as exc:  # noqa: BLE001 - recorded, then retried with backoff
             error = exc
             d.last_error = str(exc)[:500]

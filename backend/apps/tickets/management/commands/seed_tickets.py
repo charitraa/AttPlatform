@@ -10,7 +10,8 @@ genuine), then `created_at`/lifecycle timestamps are back-dated across the last
 """
 
 import random
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
@@ -22,6 +23,8 @@ from apps.customers.models import Customer, CustomerContact
 from apps.organizations.catalog import RoleCode
 from apps.organizations.models import Membership, Organization
 from apps.organizations.tenancy import TenantContext, permissions_for
+from apps.sla import services as sla_services
+from apps.sla.business_time import add_business_seconds
 from apps.tickets import services
 from apps.tickets.models import Ticket, TicketCategory, TicketComment, TicketStatus
 
@@ -93,6 +96,108 @@ ISSUES = [
         "Main entrance reader rejects several valid staff badges.",
     ),
 ]
+
+
+RESOLUTIONS = [
+    "Replaced the faulty component and verified normal operation.",
+    "Cleaned the condenser coils and recharged refrigerant; temperature back to normal.",
+    "Reset the breaker, replaced a worn contactor and load-tested the circuit.",
+    "Updated the firmware and reconfigured the device; tested with the customer.",
+    "Cleared the paper path, replaced the pickup roller and printed test pages.",
+    "Replaced the probe cable and recalibrated the monitor with biomedical staff.",
+]
+
+
+def _working_time(rng, now, tz) -> datetime:
+    """A creation time in the last 30 days, usually inside office hours (Sun–Fri, 09–17 local)."""
+    while True:
+        day = (now.astimezone(tz) - timedelta(days=rng.uniform(0, 29.5))).date()
+        if day.weekday() == 5 and rng.random() < 0.85:  # Saturday is the weekly holiday in Nepal
+            continue
+        hour = rng.uniform(9, 17) if rng.random() < 0.85 else rng.uniform(6, 22)
+        at = datetime.combine(day, time(int(hour), int(hour % 1 * 60)), tzinfo=tz)
+        if at < now:
+            return at
+
+
+def _timeline(rng, ticket, now) -> dict:
+    """
+    Decide when each step happened, relative to the ticket's real SLA targets so compliance is
+    realistic (~85 % of responses and ~80 % of resolutions on time), and what state it ends in.
+    """
+    match = sla_services.select_policy(ticket)
+    cal = sla_services.calendar_for(match[0].business_hours) if match else None
+    resp_min, res_min = (match[1].first_response_minutes, match[1].resolution_minutes) if match else (240, 1440)
+
+    def after(start, minutes, median, spread):
+        factor = rng.lognormvariate(median, spread)
+        if cal is None:
+            return start + timedelta(minutes=minutes * factor)
+        return add_business_seconds(cal, start, minutes * 60 * factor)
+
+    created = ticket.created_at
+    responded = after(created, resp_min, -0.9, 0.75)  # median ≈ 40 % of the target
+    resolved = after(created, res_min, -0.55, 0.6)  # median ≈ 58 % of the target
+    resolved = max(resolved, responded + timedelta(minutes=20))
+    t = {
+        "created": created,
+        "responded": None,
+        "working": None,
+        "waiting_on_customer": None,
+        "resolved": None,
+        "closed": None,
+        "escalate": False,
+    }
+    if responded > now and rng.random() < 0.7:
+        return t  # brand new and nobody has replied yet
+    t["responded"] = min(responded, now - timedelta(minutes=5))
+    t["working"] = min(t["responded"] + timedelta(minutes=rng.randint(10, 120)), now - timedelta(minutes=2))
+    if resolved <= now and rng.random() < 0.88:
+        t["resolved"] = resolved
+        closed = resolved + timedelta(hours=rng.uniform(2, 60))
+        if closed <= now and rng.random() < 0.7:
+            t["closed"] = closed
+    elif rng.random() < 0.15:
+        t["waiting_on_customer"] = t["working"] + timedelta(minutes=30)
+    elif rng.random() < 0.12:
+        t["escalate"] = True
+    return t
+
+
+def _apply_dates(ticket, t) -> None:
+    """Date the ticket, its history and its replies to match the timeline."""
+    fields = {
+        "created_at": t["created"],
+        "first_response_at": t["responded"],
+        "resolved_at": t["resolved"],
+        "closed_at": t["closed"],
+    }
+    last = max(v for v in (t["created"], t["responded"], t["working"], t["resolved"], t["closed"]) if v)
+    fields["updated_at"] = last
+    if t["closed"]:
+        fields["customer_confirmed_at"] = None  # closed by staff in the demo
+    Ticket.objects.filter(pk=ticket.pk).update(**fields)
+    for h in ticket.history.all():
+        when = t["created"]
+        if h.event == "assigned" or (h.field == "status" and h.new_value == "assigned"):
+            when = t["responded"] or when
+        elif h.field == "status":
+            when = {
+                "in_progress": t["working"],
+                "pending_customer": t["waiting_on_customer"],
+                "resolved": t["resolved"],
+                "closed": t["closed"],
+                "escalated": t["working"],
+            }.get(h.new_value) or when
+        elif h.field == "resolution_notes":
+            when = t["resolved"] or when
+        elif h.event == "commented":
+            when = t["working"] or t["responded"] or when
+        type(h).objects.filter(pk=h.pk).update(created_at=when)
+    replies = list(ticket.comments.order_by("created_at"))
+    stamps = [t["responded"], t["working"], t["waiting_on_customer"]]
+    for comment, when in zip(replies, [s for s in stamps if s], strict=False):
+        type(comment).objects.filter(pk=comment.pk).update(created_at=when)
 
 
 class Command(BaseCommand):
@@ -167,27 +272,31 @@ class Command(BaseCommand):
             for a_idx, (cat, name, make, model) in enumerate(ASSETS):
                 if rng.random() < 0.55:
                     installed = date.today() - timedelta(days=rng.randint(200, 2000))
-                    assets.setdefault((customer.id, cat), []).append(
-                        Asset.objects.create(
-                            organization=organization,
-                            customer=customer,
-                            category=asset_categories[cat],
-                            asset_tag=f"AST-{c_idx + 1:02d}{a_idx + 1:02d}",
-                            name=name,
-                            manufacturer=make,
-                            model=model,
-                            serial_number=f"SN{rng.randint(10**7, 10**8 - 1)}",
-                            location=f"Building {rng.choice('ABC')}",
-                            installed_at=installed,
-                            warranty_expires_at=installed + timedelta(days=rng.choice([365, 730, 1095])),
-                        )
+                    serial = f"SN{rng.randint(10**7, 10**8 - 1)}"
+                    location = f"Building {rng.choice('ABC')}"
+                    warranty = installed + timedelta(days=rng.choice([365, 730, 1095]))
+                    asset, _ = Asset.objects.get_or_create(  # re-runs (reset_demo) keep the same assets
+                        organization=organization,
+                        asset_tag=f"AST-{c_idx + 1:02d}{a_idx + 1:02d}",
+                        defaults={
+                            "customer": customer,
+                            "category": asset_categories[cat],
+                            "name": name,
+                            "manufacturer": make,
+                            "model": model,
+                            "serial_number": serial,
+                            "location": location,
+                            "installed_at": installed,
+                            "warranty_expires_at": warranty,
+                        },
                     )
+                    assets.setdefault((customer.id, cat), []).append(asset)
 
         admin = (by_role.get(RoleCode.ORG_ADMIN) or agents)[0]
         tenant = TenantContext(membership=admin, permissions=permissions_for(admin))
         agent_tenants = [TenantContext(membership=a, permissions=permissions_for(a)) for a in agents]
         now = timezone.now()
-        # Weighted outcome per ticket age: older tickets are more likely to be finished.
+        tz = ZoneInfo(organization.timezone or "UTC")
         for _ in range(count):
             cat_name, title, description = rng.choice(ISSUES)
             customer = rng.choice(customers)
@@ -205,10 +314,14 @@ class Command(BaseCommand):
                     "channel": rng.choice(["email", "phone", "portal", "staff"]),
                 },
             )
-            age_days = rng.uniform(0, 29)
+            created = _working_time(rng, now, tz)
+            Ticket.objects.filter(pk=ticket.pk).update(created_at=created)
+            ticket.refresh_from_db()
+            timeline = _timeline(rng, ticket, now)
             agent_tenant = rng.choice(agent_tenants)
-            outcome = rng.random() * (1 + age_days / 15)
-            if outcome > 0.35:
+
+            # Replay the lifecycle through the real services, then date each step.
+            if timeline["responded"]:
                 services.assign_ticket(
                     tenant=tenant,
                     ticket=ticket,
@@ -223,7 +336,7 @@ class Command(BaseCommand):
                     visibility=TicketComment.Visibility.PUBLIC,
                     body="Thanks for reporting this. We're looking into it and will update you shortly.",
                 )
-            if outcome > 0.6:
+            if timeline["working"]:
                 services.transition_ticket(tenant=agent_tenant, ticket=ticket, to_status=TicketStatus.IN_PROGRESS)
                 services.add_comment(
                     tenant=agent_tenant,
@@ -231,33 +344,26 @@ class Command(BaseCommand):
                     visibility=TicketComment.Visibility.INTERNAL,
                     body="Checked remotely; likely needs an on-site visit.",
                 )
-            if outcome > 0.95:
+            if timeline["waiting_on_customer"]:
+                services.transition_ticket(
+                    tenant=agent_tenant,
+                    ticket=ticket,
+                    to_status=TicketStatus.PENDING_CUSTOMER,
+                    note="Could you confirm whether the unit shows any error code on its display?",
+                )
+            if timeline["resolved"]:
                 services.transition_ticket(
                     tenant=agent_tenant,
                     ticket=ticket,
                     to_status=TicketStatus.RESOLVED,
-                    resolution_notes="Replaced the faulty component and verified normal operation.",
+                    resolution_notes=rng.choice(RESOLUTIONS),
                 )
-            if outcome > 1.4:
+            if timeline["closed"]:
                 services.transition_ticket(tenant=agent_tenant, ticket=ticket, to_status=TicketStatus.CLOSED)
-            elif 0.75 < outcome < 0.85:
+            elif timeline["escalate"]:
                 services.escalate_ticket(tenant=agent_tenant, ticket=ticket, reason="Needs vendor involvement.")
-
-            # Back-date so the dashboard has a realistic 30-day shape.
-            created = now - timedelta(days=age_days)
-            ticket.refresh_from_db()
-            fields = {"created_at": created}
-            if ticket.first_response_at:
-                fields["first_response_at"] = created + timedelta(minutes=rng.randint(10, 240))
-            if ticket.resolved_at:
-                fields["resolved_at"] = min(now, created + timedelta(hours=rng.randint(2, 96)))
-            if ticket.closed_at:
-                fields["closed_at"] = min(now, fields["resolved_at"] + timedelta(hours=rng.randint(1, 48)))
-            fields["due_at"] = created + timedelta(
-                hours={"critical": 8, "high": 24, "medium": 72, "low": 120}[ticket.priority]
-            )
-            Ticket.objects.filter(pk=ticket.pk).update(**fields)
-            ticket.history.update(created_at=created)
+            _apply_dates(ticket, timeline)
+            sla_services.restamp(Ticket.objects.get(pk=ticket.pk), now=now)
 
         self.stdout.write(
             self.style.SUCCESS(
