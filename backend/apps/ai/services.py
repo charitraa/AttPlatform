@@ -292,7 +292,9 @@ def _run_priority(analysis: AIAnalysis) -> AIAnalysis:
 def _run_routing(analysis: AIAnalysis) -> AIAnalysis:
     ticket = analysis.ticket
     agents = routing.rank_candidates(ticket, kind="agent")
-    technicians = routing.rank_candidates(ticket, kind="technician") if ticket.asset_id else []
+    # Suggest a technician when on-site work is likely: an asset is involved or a work order exists.
+    needs_field = bool(ticket.asset_id) or ticket.work_orders.exists()
+    technicians = routing.rank_candidates(ticket, kind="technician") if needs_field else []
     candidates_ctx = [
         {
             "user_id": c.user_id,
@@ -320,8 +322,12 @@ def _run_routing(analysis: AIAnalysis) -> AIAnalysis:
             explanation_error = analysis.error  # ranking still stands without the explanations
 
     def describe(c):
-        return explanations.get(c.user_id) or (
-            f"{c.open_tickets} open ticket(s); {c.category_resolved} resolved in this category in the last 90 days."
+        return (
+            explanations.get(c.user_id)
+            or c.summary
+            or (
+                f"{c.open_tickets} open ticket(s); {c.category_resolved} resolved in this category in the last 90 days."
+            )
         )
 
     confidence = routing.routing_confidence(agents)

@@ -36,6 +36,7 @@ class Candidate:
     active_recently: bool
     score: float = 0.0
     factors: dict | None = None
+    summary: str = ""  # human-readable fallback explanation
 
 
 # Front-line roles are routed to first; administrators only when nobody else is available.
@@ -51,7 +52,9 @@ def _eligible(ticket: Ticket, roles) -> list[Membership]:
 
 
 def rank_candidates(ticket: Ticket, *, kind: str = "agent", limit: int = 5) -> list[Candidate]:
-    field = "assigned_agent" if kind == "agent" else "assigned_technician"
+    if kind == "technician":
+        return _rank_technicians(ticket, limit)
+    field = "assigned_agent"
     if kind == "agent":
         members = _eligible(ticket, PREFERRED_AGENT_ROLES) or _eligible(ticket, AGENT_ROLES)
     else:
@@ -105,3 +108,32 @@ def routing_confidence(candidates: list[Candidate]) -> float:
         return 0.6
     gap = candidates[0].score - candidates[1].score
     return round(min(0.95, 0.5 + gap), 3)
+
+
+def _rank_technicians(ticket: Ticket, limit: int) -> list[Candidate]:
+    """Technicians are scored by field service (skills, availability, workload, distance)."""
+    from apps.field_service.selectors import rank_technicians
+
+    out = []
+    for r in rank_technicians(ticket.organization, category_id=ticket.category_id, limit=limit):
+        skills = (
+            f"skills: {', '.join(r.matched_skills)}"
+            if r.matched_skills
+            else "no category skills required"
+            if not r.missing_skills
+            else "missing required skills"
+        )
+        out.append(
+            Candidate(
+                user_id=r.user_id,
+                name=r.name,
+                role="Field Technician",
+                open_tickets=r.active_jobs,
+                category_resolved=len(r.matched_skills),
+                active_recently=r.status == "available",
+                score=r.score,
+                factors=r.factors,
+                summary=f"{r.active_jobs} active job(s); {skills}; status {r.status}.",
+            )
+        )
+    return out

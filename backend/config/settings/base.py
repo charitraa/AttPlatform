@@ -61,6 +61,7 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.knowledge",
     "apps.ai",
+    "apps.field_service",
 ]
 AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -137,7 +138,8 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
+# Local runs default to .local-media: in Docker, backend/media is a root-owned volume mount point.
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / ".local-media")))
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},

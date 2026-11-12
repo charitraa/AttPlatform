@@ -20,8 +20,6 @@ from apps.tickets.selectors import can_see_internal, visible_tickets
 
 UNAVAILABLE = {
     "sla_compliance": "SLA policies arrive in Phase 6.",
-    "technicians_available": "Technician management arrives in Phase 5.",
-    "active_work_orders": "Work orders arrive in Phase 5.",
 }
 
 
@@ -60,9 +58,8 @@ def summary(tenant: TenantContext, *, days: int = 30) -> dict:
         "avg_resolution_hours": _hours(averages["avg_resolution"]),
         "avg_first_response_hours": _hours(averages["avg_first_response"]),
         "sla_compliance": None,
-        "technicians_available": None,
-        "active_work_orders": None,
-        "unavailable": UNAVAILABLE,
+        **_field_service_figures(tenant),
+        "unavailable": {**UNAVAILABLE, **_field_service_unavailable(tenant)},
         "generated_at": now,
     }
 
@@ -153,3 +150,28 @@ def recent_activity(tenant: TenantContext, *, limit: int = 15) -> list[dict]:
         }
         for h in qs.order_by("-created_at", "-id")[:limit]
     ]
+
+
+def _field_service_figures(tenant: TenantContext) -> dict:
+    from apps.field_service.models import ACTIVE_WORK_ORDER_STATUSES
+    from apps.field_service.selectors import active_technicians, available_now_count, visible_work_orders
+
+    perms = tenant.permissions
+    sees_team = "technicians.view" in perms and "work_orders.view_all" in perms
+    sees_orders = bool({"work_orders.view_all", "work_orders.view_own"} & perms)
+    active_orders = visible_work_orders(tenant).filter(status__in=ACTIVE_WORK_ORDER_STATUSES)
+    return {
+        "technicians_available": available_now_count(tenant.organization) if sees_team else None,
+        "technicians_total": active_technicians(tenant.organization).count() if sees_team else None,
+        "active_work_orders": active_orders.count() if sees_orders else None,
+    }
+
+
+def _field_service_unavailable(tenant: TenantContext) -> dict:
+    perms = tenant.permissions
+    out = {}
+    if not ("technicians.view" in perms and "work_orders.view_all" in perms):
+        out["technicians_available"] = "Visible to dispatchers."
+    if not ({"work_orders.view_all", "work_orders.view_own"} & perms):
+        out["active_work_orders"] = "Not available for your role."
+    return out

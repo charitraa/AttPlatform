@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity, BarChart3, Boxes, Building2, CalendarDays, ClipboardList, Gauge, Plug, Sparkles,
-  Ticket, Timer, Users, UserCog, Wrench, BrainCircuit, Bell,
+  Ticket, Timer, Users, UserCog, Wrench, BrainCircuit, Bell, Smartphone,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -48,6 +48,7 @@ export const navigation: NavGroup[] = [
   {
     label: 'Field service',
     items: [
+      { label: 'My jobs', to: '/my-jobs', icon: Smartphone, phase: 5, summary: 'Your jobs for today, optimised for mobile.', permissions: ['work_orders.execute'] },
       { label: 'Work orders', to: '/work-orders', icon: ClipboardList, phase: 5, summary: 'Dispatch, on-site workflow, evidence and customer confirmation.', permissions: ['work_orders.view_all', 'work_orders.view_own'] },
       { label: 'Technicians', to: '/technicians', icon: Wrench, phase: 5, summary: 'Skills, certifications, availability and service areas.', permissions: ['technicians.view'] },
       { label: 'Schedule', to: '/schedule', icon: CalendarDays, phase: 5, summary: 'Technician calendar and customer appointments.', permissions: ['schedule.view'] },

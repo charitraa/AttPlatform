@@ -45,7 +45,9 @@ def test_summary_counts_from_real_data(client_for, admin, setup):
     assert body["avg_resolution_hours"] == 15.0
     # Metrics from modules that don't exist yet are null with a reason — never invented.
     assert body["sla_compliance"] is None and "Phase 6" in body["unavailable"]["sla_compliance"]
-    assert body["technicians_available"] is None
+    # Field-service figures are real since Phase 5: one available technician, no active work orders.
+    assert body["technicians_available"] == 1 and body["technicians_total"] == 1
+    assert body["active_work_orders"] == 0
 
 
 def test_summary_respects_row_level_visibility(client_for, setup):

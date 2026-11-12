@@ -13,6 +13,7 @@ __pycache__/
 .coverage
 htmlcov/
 backend/media/
+backend/.local-media/
 backend/staticfiles/
 
 # Node

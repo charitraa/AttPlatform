@@ -4,6 +4,7 @@ work-order evidence, ...): size limit, extension allow-list, content sniffing
 with libmagic (the bytes must match the extension), and a SHA-256 digest.
 SVG and executables are never accepted.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -69,4 +70,6 @@ def validate_upload(upload, allowed: dict[str, frozenset[str]] = ALL_ALLOWED) ->
     for chunk in upload.chunks():
         digest.update(chunk)
     upload.seek(0)
-    return ValidatedUpload(original_name=original_name, content_type=sniffed, size=upload.size, sha256=digest.hexdigest())
+    return ValidatedUpload(
+        original_name=original_name, content_type=sniffed, size=upload.size, sha256=digest.hexdigest()
+    )

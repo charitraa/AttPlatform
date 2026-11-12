@@ -28,6 +28,12 @@ const CustomerDetailPage = named(() => import('@/features/customers/customer-det
 const AssetsPage = named(() => import('@/features/assets/assets-page'), 'AssetsPage')
 const AssistantPage = named(() => import('@/features/ai/assistant-page'), 'AssistantPage')
 const InsightsPage = named(() => import('@/features/ai/insights-page'), 'InsightsPage')
+const WorkOrdersPage = named(() => import('@/features/field-service/work-orders-page'), 'WorkOrdersPage')
+const WorkOrderDetailPage = named(() => import('@/features/field-service/work-order-detail-page'), 'WorkOrderDetailPage')
+const TechniciansPage = named(() => import('@/features/field-service/technicians-page'), 'TechniciansPage')
+const TechnicianDetailPage = named(() => import('@/features/field-service/technician-detail-page'), 'TechnicianDetailPage')
+const SchedulePage = named(() => import('@/features/field-service/schedule-page'), 'SchedulePage')
+const MyJobsPage = named(() => import('@/features/field-service/my-jobs-page'), 'MyJobsPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -42,6 +48,10 @@ const implemented: Record<string, ReactNode> = {
   '/assets': <AssetsPage />,
   '/ai/assistant': <AssistantPage />,
   '/ai/insights': <InsightsPage />,
+  '/work-orders': <WorkOrdersPage />,
+  '/technicians': <TechniciansPage />,
+  '/schedule': <SchedulePage />,
+  '/my-jobs': <MyJobsPage />,
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }
@@ -83,6 +93,14 @@ export const routes: RouteObject[] = [
               {
                 path: 'customers/:id',
                 element: <RequirePermission anyOf={['customers.view']}>{page(<CustomerDetailPage />)}</RequirePermission>,
+              },
+              {
+                path: 'work-orders/:id',
+                element: <RequirePermission anyOf={['work_orders.view_all', 'work_orders.view_own']}>{page(<WorkOrderDetailPage />)}</RequirePermission>,
+              },
+              {
+                path: 'technicians/:id',
+                element: <RequirePermission anyOf={['technicians.view']}>{page(<TechnicianDetailPage />)}</RequirePermission>,
               },
               {
                 path: 'tickets/new',
