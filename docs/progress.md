@@ -526,8 +526,7 @@
 | Live stack | inbound signed message → ticket TCK-000046 via the worker; replay = duplicate; forged = 401; metadata URL refused; report + CSV; portal as the demo customer; real email through Gmail SMTP (redirected) |
 
 ### Known gaps carried forward
-- SMS/WhatsApp are wired as connectors (send + test) but not yet as notification channels in
-  preferences; Twilio/WhatsApp were verified by request-shape tests only (no accounts here).
+- ~~SMS/WhatsApp not notification channels~~ WhatsApp done (follow-up below); SMS waits for a paid sender.
 - ~~Email-to-ticket~~ done (follow-up below).
 - `PUBLIC_API_URL` should be set so inbound URLs shown in the UI are reachable from outside (falls back to `FRONTEND_URL`).
 - Webhook delivery holds a row lock during the HTTP call (≤10 s); fine at this scale, revisit with a "sending" state if volume grows.
@@ -548,6 +547,20 @@
   in-app notifications. Result: 70 % resolution compliance instead of 0 %. Re-runs are repeatable (assets are
   now get-or-create).
 - `events.muted()` context manager for bulk operations.
+
+### Follow-up: WhatsApp notifications and Twilio API keys (2026-11-12)
+- **WhatsApp as a notification channel**: `whatsapp` joins In-app and Email in preferences (off by default),
+  offered only when the organization has an enabled WhatsApp integration with a `notification_template`
+  (an approved Meta template with body variables {{1}} = what happened, {{2}} = link). Sent to the phone on the
+  user's profile (normalised to E.164), as a retried task; recipient/template errors (Meta `#131xxx`) fail
+  without pointless retries. Verified live on Meta's free test number: `hello_world` delivered to a verified
+  phone; template `att_notification` submitted through the API (pending Meta review at the time of writing).
+- **Twilio SMS with API keys** (`SK…` + secret, revocable on their own) as well as the auth token; the
+  connection test now checks that the From number belongs to the account and can send SMS (API keys may not
+  read the account resource). Verified live: the key signs in. Twilio's 2026 free trial only sends Twilio's
+  predefined templates and has a $0 balance, so app SMS needs an upgraded account; the integration is saved,
+  ready for a number.
+- Known: one dashboard component test flaked once under full-suite load (passes alone and on re-run).
 
 ## Phase 8 — Hardening (next)
 

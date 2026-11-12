@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 from unittest import mock
 
@@ -202,3 +203,96 @@ def test_email_delivery_retries_then_fails_and_never_double_sends(team, org):
     assert deliver_email.run(str(d.id)) == "sent"
     assert deliver_email.run(str(d.id)) == "skipped"  # never sent twice
     assert len(mail.outbox) == 1
+
+
+# ---------------------------------------------------------------- WhatsApp
+def _whatsapp(org, template="att_notification"):
+    from apps.integrations.models import Integration
+
+    i = Integration.objects.create(
+        organization=org,
+        kind="whatsapp",
+        provider="meta_cloud",
+        name=f"WhatsApp {template or 'none'}",
+        config={"phone_number_id": "123", **({"notification_template": template} if template else {})},
+    )
+    i.set_secret("access_token", "EAAG-token")
+    return i
+
+
+def test_e164_normalisation():
+    assert services.e164("+977 984-720 6256") == "+9779847206256"
+    assert services.e164("9847206256") is None and services.e164("") is None
+
+
+def test_whatsapp_is_offered_only_when_an_integration_can_send(client_for, team, org):
+    agent = client_for(team["agent"])
+    assert {p["channel"] for p in agent.get("/api/v1/notifications/preferences/").json()} == {"in_app", "email"}
+    _whatsapp(org, template="")  # no notification template yet
+    assert {p["channel"] for p in agent.get("/api/v1/notifications/preferences/").json()} == {"in_app", "email"}
+    _whatsapp(org)
+    prefs = agent.get("/api/v1/notifications/preferences/").json()
+    assert {"type": "sla_breached", "label": "SLA breached", "channel": "whatsapp", "enabled": False} in prefs
+
+
+def test_whatsapp_notification_sends_the_template(team, org, django_capture_on_commit_callbacks):
+    from apps.integrations import net
+
+    _whatsapp(org)
+    user = team["agent"].user
+    user.phone = "+977 984-720 6256"
+    user.save()
+    services.set_preferences(
+        user,
+        org,
+        [
+            {"type": "ticket_assigned", "channel": "whatsapp", "enabled": True},
+            {"type": "ticket_assigned", "channel": "email", "enabled": False},
+        ],
+    )
+    sent = {}
+
+    def fake_request(method, url, *, body=None, headers=None, timeout=None):
+        sent["body"] = json.loads(body)
+        return net.Response(200, b'{"messages": [{"id": "wamid.1"}]}', {}, 5)
+
+    with mock.patch.object(net, "request", fake_request), django_capture_on_commit_callbacks(execute=True):
+        services.notify(
+            organization=org,
+            recipients=[user],
+            type="ticket_assigned",
+            title="TCK-000046\nassigned to you",
+            link="/tickets/abc",
+        )
+    d = NotificationDelivery.objects.get(channel="whatsapp")
+    assert d.status == "sent" and not NotificationDelivery.objects.filter(channel="email").exists()
+    tpl = sent["body"]["template"]
+    assert sent["body"]["to"] == "9779847206256" and tpl["name"] == "att_notification"
+    assert [p["text"] for p in tpl["components"][0]["parameters"]] == [
+        "TCK-000046 assigned to you",
+        "http://localhost:5173/tickets/abc",
+    ]
+
+
+def test_whatsapp_needs_a_phone_and_does_not_retry_recipient_errors(team, org, django_capture_on_commit_callbacks):
+    from apps.integrations import net
+
+    _whatsapp(org)
+    user = team["agent"].user
+    services.set_preferences(user, org, [{"type": "ticket_assigned", "channel": "whatsapp", "enabled": True}])
+    services.notify(organization=org, recipients=[user], type="ticket_assigned", title="x")  # no phone on profile
+    assert not NotificationDelivery.objects.filter(channel="whatsapp").exists()
+
+    user.phone = "+9779847206256"
+    user.save()
+    services.notify(organization=org, recipients=[user], type="ticket_assigned", title="y")
+    d = NotificationDelivery.objects.get(channel="whatsapp")
+    refused = net.Response(
+        400, b'{"error": {"message": "(#131030) Recipient phone number not in allowed list"}}', {}, 5
+    )
+    with mock.patch.object(net, "request", return_value=refused):
+        from apps.notifications.tasks import deliver_whatsapp
+
+        assert deliver_whatsapp.run(str(d.id)) == "failed"
+    d.refresh_from_db()
+    assert d.attempts == 1 and "131030" in d.last_error

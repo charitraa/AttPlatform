@@ -9,7 +9,7 @@ export const notificationSchema = z.object({
 })
 export type AppNotification = z.infer<typeof notificationSchema>
 
-const preferenceSchema = z.object({ type: z.string(), label: z.string(), channel: z.enum(['in_app', 'email']), enabled: z.boolean() })
+const preferenceSchema = z.object({ type: z.string(), label: z.string(), channel: z.string(), enabled: z.boolean() })
 export type Preference = z.infer<typeof preferenceSchema>
 
 const countSchema = z.object({ unread: z.number() })

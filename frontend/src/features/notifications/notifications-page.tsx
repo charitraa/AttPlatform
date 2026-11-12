@@ -78,8 +78,14 @@ function Preferences() {
   const save = useSavePreferences()
   if (prefs.isPending) return <Skeleton className="h-64" />
   if (prefs.isError) return <ErrorState error={prefs.error} onRetry={() => prefs.refetch()} />
-  const rows = new Map<string, { label: string; in_app?: Preference; email?: Preference }>()
-  for (const p of prefs.data) rows.set(p.type, { ...rows.get(p.type), label: p.label, [p.channel]: p })
+  const CHANNEL_LABEL: Record<string, string> = { in_app: 'In-app', email: 'Email', whatsapp: 'WhatsApp' }
+  const channels = [...new Set(prefs.data.map((p) => p.channel))]
+  const rows = new Map<string, { label: string; byChannel: Record<string, Preference> }>()
+  for (const p of prefs.data) {
+    const row = rows.get(p.type) ?? { label: p.label, byChannel: {} }
+    row.byChannel[p.channel] = p
+    rows.set(p.type, row)
+  }
   const toggle = (p: Preference) =>
     save.mutate([{ type: p.type, channel: p.channel, enabled: !p.enabled }], {
       onError: (e) => toast.error(firstErrorMessage(e)),
@@ -89,23 +95,26 @@ function Preferences() {
     <Card>
       <CardHeader>
         <CardTitle>What you're told about</CardTitle>
-        <CardDescription>Changes save straight away. You're never notified about things you did yourself.</CardDescription>
+        <CardDescription>
+          Changes save straight away. You're never notified about things you did yourself.
+          {channels.includes('whatsapp') && <> WhatsApp messages go to the phone number in your <a href="/settings/profile" className="text-primary hover:underline">profile</a> (international format, e.g. +977 98…).</>}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground"><th className="py-2 font-medium">Event</th><th className="w-24 py-2 text-center font-medium">In-app</th><th className="w-24 py-2 text-center font-medium">Email</th></tr>
+            <tr className="border-b text-left text-xs text-muted-foreground"><th className="py-2 font-medium">Event</th>{channels.map((c) => <th key={c} className="w-24 py-2 text-center font-medium">{CHANNEL_LABEL[c] ?? c}</th>)}</tr>
           </thead>
           <tbody>
             {[...rows.entries()].map(([type, row]) => (
               <tr key={type} className="border-b last:border-0">
                 <td className="py-2.5">{row.label}</td>
-                {(['in_app', 'email'] as const).map((c) => {
-                  const p = row[c]
+                {channels.map((c) => {
+                  const p = row.byChannel[c]
                   return (
                     <td key={c} className="py-2.5 text-center">
                       {p && <input type="checkbox" className="size-4 accent-primary" checked={p.enabled} disabled={save.isPending}
-                        aria-label={`${row.label}: ${c === 'email' ? 'email' : 'in-app'}`} onChange={() => toggle(p)} />}
+                        aria-label={`${row.label}: ${(CHANNEL_LABEL[c] ?? c).toLowerCase()}`} onChange={() => toggle(p)} />}
                     </td>
                   )
                 })}

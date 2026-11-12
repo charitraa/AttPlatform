@@ -128,3 +128,20 @@ describe('notifications', () => {
     await waitFor(() => expect(saved).toEqual([{ type: 'ticket_assigned', channel: 'email', enabled: false }]))
   })
 })
+
+describe('WhatsApp preferences', () => {
+  it('shows a WhatsApp column when the organization offers it', async () => {
+    const user = userEvent.setup()
+    let saved: unknown = null
+    const prefs = ['in_app', 'email', 'whatsapp'].map((channel) => ({ type: 'sla_breached', label: 'SLA breached', channel, enabled: channel !== 'whatsapp' }))
+    server.use(
+      http.get(`${API}/notifications/preferences/`, () => HttpResponse.json(prefs)),
+      http.put(`${API}/notifications/preferences/`, async ({ request }) => { saved = await request.json(); return HttpResponse.json(prefs) }),
+    )
+    renderRoute('/notifications', { user: makeMe() })
+    await user.click(await screen.findByRole('tab', { name: 'Preferences' }))
+    expect(await screen.findByRole('columnheader', { name: 'WhatsApp' })).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'SLA breached: whatsapp' }))
+    await waitFor(() => expect(saved).toEqual([{ type: 'sla_breached', channel: 'whatsapp', enabled: true }]))
+  })
+})

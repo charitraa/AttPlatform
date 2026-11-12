@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from apps.organizations.permissions import IsOrganizationMember
 
 from . import services
-from .models import Channel, NotificationType
+from .models import NotificationType
 from .serializers import MarkReadSerializer, NotificationSerializer, PreferenceSerializer
 
 COUNT = inline_serializer("UnreadCount", {"unread": serializers.IntegerField()})
@@ -55,12 +55,12 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return Response({"unread": self.get_queryset().filter(read_at__isnull=True).count()})
 
 
-def _flatten(prefs: dict) -> list[dict]:
+def _flatten(prefs: dict, channels: list[str]) -> list[dict]:
     labels = dict(NotificationType.choices)
     return [
         {"type": t, "label": labels[t], "channel": c, "enabled": prefs[t][c]}
         for t in NotificationType.values
-        for c in Channel.values
+        for c in channels
     ]
 
 
@@ -72,11 +72,16 @@ class PreferencesView(APIView):
 
     @extend_schema(responses=PreferenceSerializer(many=True))
     def get(self, request):
-        return Response(_flatten(services.preferences_for(request.user, request.organization)))
+        return Response(
+            _flatten(
+                services.preferences_for(request.user, request.organization),
+                services.channels_for(request.organization),
+            )
+        )
 
     @extend_schema(request=PreferenceSerializer(many=True), responses=PreferenceSerializer(many=True))
     def put(self, request):
         s = PreferenceSerializer(data=request.data, many=True)
         s.is_valid(raise_exception=True)
         prefs = services.set_preferences(request.user, request.organization, s.validated_data)
-        return Response(_flatten(prefs), status=status.HTTP_200_OK)
+        return Response(_flatten(prefs, services.channels_for(request.organization)), status=status.HTTP_200_OK)

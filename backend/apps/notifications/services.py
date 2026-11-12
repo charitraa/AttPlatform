@@ -9,6 +9,7 @@ task, both after the transaction commits.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from django.db import transaction
@@ -19,9 +20,31 @@ from apps.organizations.models import Membership
 from . import realtime
 from .models import DEFAULT_ENABLED, Channel, Notification, NotificationDelivery, NotificationPreference
 
+PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+
+
+def e164(phone: str) -> str | None:
+    """'+977 984-720 6256' → '+9779847206256'; None unless it's a full international number."""
+    compact = re.sub(r"[\s()\-.]", "", phone or "")
+    return compact if PHONE_RE.match(compact) else None
+
+
+def whatsapp_integration(organization):
+    """The organization's WhatsApp integration that can send notifications, if any."""
+    from apps.integrations.models import Integration
+
+    for i in Integration.objects.filter(organization=organization, kind=Integration.Kind.WHATSAPP, is_enabled=True):
+        if i.config.get("notification_template"):
+            return i
+    return None
+
+
+def channels_for(organization) -> list[str]:
+    return [Channel.IN_APP, Channel.EMAIL] + ([Channel.WHATSAPP] if whatsapp_integration(organization) else [])
+
 
 def preferences_for(user, organization) -> dict[str, dict[str, bool]]:
-    prefs = {t: dict(channels) for t, channels in DEFAULT_ENABLED.items()}
+    prefs = {t: {**dict(channels), Channel.WHATSAPP: False} for t, channels in DEFAULT_ENABLED.items()}
     for p in NotificationPreference.objects.filter(user=user, organization=organization):
         if p.type in prefs:
             prefs[p.type][p.channel] = p.enabled
@@ -73,10 +96,13 @@ def notify(
         ).values_list("user_id", flat=True)
     )
     created = []
+    wa = whatsapp_integration(organization)
     with transaction.atomic():
         for user_id in active_ids:
             user = unique[user_id]
             channels = preferences_for(user, organization).get(type, {})
+            if not wa or not e164(user.phone):
+                channels = {**channels, Channel.WHATSAPP: False}
             if not any(channels.values()):
                 continue
             n = Notification.objects.create(
@@ -93,6 +119,9 @@ def notify(
             if channels.get(Channel.EMAIL) and user.email:
                 delivery = NotificationDelivery.objects.create(notification=n, channel=Channel.EMAIL)
                 transaction.on_commit(lambda d=delivery.pk: _queue_email(d))
+            if wa and channels.get(Channel.WHATSAPP) and e164(user.phone):
+                delivery = NotificationDelivery.objects.create(notification=n, channel=Channel.WHATSAPP)
+                transaction.on_commit(lambda d=delivery.pk: _queue_whatsapp(d))
             if n.in_app:
                 transaction.on_commit(
                     lambda n=n: realtime.push(
@@ -111,6 +140,12 @@ def _queue_email(delivery_id) -> None:
     from .tasks import deliver_email
 
     deliver_email.delay(str(delivery_id))
+
+
+def _queue_whatsapp(delivery_id) -> None:
+    from .tasks import deliver_whatsapp
+
+    deliver_whatsapp.delay(str(delivery_id))
 
 
 def inbox(user, organization):

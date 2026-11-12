@@ -19,6 +19,7 @@ class NotificationType(models.TextChoices):
 class Channel(models.TextChoices):
     IN_APP = "in_app", "In-app"
     EMAIL = "email", "Email"
+    WHATSAPP = "whatsapp", "WhatsApp"
 
 
 # Defaults when a user has not chosen: email only for things that need action soon.

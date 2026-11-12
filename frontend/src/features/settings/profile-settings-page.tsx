@@ -61,7 +61,7 @@ function ProfileForm({ user }: { user: Me }) {
             <Field label="Email" description="Contact an administrator to change your sign-in email.">
               <Input value={user.email} readOnly disabled />
             </Field>
-            <Field label="Phone" error={errors.phone?.message}><Input type="tel" autoComplete="tel" {...register('phone')} /></Field>
+            <Field label="Phone" error={errors.phone?.message} description="International format, e.g. +977 9847206256. Used for WhatsApp notifications if you turn them on."><Input type="tel" autoComplete="tel" {...register('phone')} /></Field>
             <Field label="Timezone" error={errors.timezone?.message} description="Used to display dates and times.">
               <NativeSelect {...register('timezone')}>
                 {timezoneOptions(user.timezone).map((tz) => <option key={tz} value={tz}>{tz}</option>)}

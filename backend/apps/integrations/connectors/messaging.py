@@ -119,6 +119,13 @@ class WhatsAppCloud(Connector):
     fields = (
         Field("phone_number_id", "Phone number ID", help="From WhatsApp Manager → API setup."),
         Field("language", "Template language", required=False, help="e.g. en_US (default)"),
+        Field(
+            "notification_template",
+            "Notification template",
+            required=False,
+            help="Approved template with two body variables: {{1}} = what happened, {{2}} = link. "
+            "Needed to send notifications by WhatsApp.",
+        ),
     )
     secrets = (Field("access_token", "Access token"),)
     can_send = True
