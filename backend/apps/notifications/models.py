@@ -88,3 +88,6 @@ class NotificationPreference(models.Model):
             models.UniqueConstraint(fields=("user", "organization", "type", "channel"), name="uniq_notif_pref"),
             models.CheckConstraint(condition=~Q(type=""), name="notif_pref_type_set"),
         ]
+
+    def __str__(self) -> str:
+        return f"{self.type}/{self.channel}: {'on' if self.enabled else 'off'}"

@@ -28,9 +28,12 @@ class FakeWebSocket {
   send() {}
   close() {}
 }
-Object.defineProperty(globalThis, 'WebSocket', { writable: true, value: FakeWebSocket })
-
-beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
+beforeAll(() => {
+  server.listen({ onUnhandledFrame: 'error' })
+  // Install after listen(): MSW patches WebSocket for interception; app sockets stay inert in tests.
+  // (Tests that drive the event stream swap in their own fake with vi.stubGlobal.)
+  Object.defineProperty(globalThis, 'WebSocket', { writable: true, configurable: true, value: FakeWebSocket })
+})
 afterEach(() => {
   cleanup()
   server.resetHandlers()

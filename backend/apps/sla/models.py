@@ -59,7 +59,11 @@ class SLAPolicy(BaseModel):
     is_default = models.BooleanField(default=False, help_text="Used when no other policy matches.")
     is_active = models.BooleanField(default=True)
     business_hours = models.ForeignKey(
-        BusinessHours, null=True, blank=True, on_delete=models.PROTECT, related_name="policies",
+        BusinessHours,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="policies",
         help_text="Empty means the clock runs 24/7.",
     )
     # {"categories": [uuid], "customer_tiers": ["gold"], "channels": ["email"]}; empty list = any

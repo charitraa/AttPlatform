@@ -11,6 +11,7 @@ import { formatDateTime, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useCan } from '@/stores/auth'
 import { AIPanel } from '@/features/ai/components/ai-panel'
+import { TicketSLAPanel } from '@/features/sla/components/ticket-sla-panel'
 import { useTicket } from './api'
 import { AttachmentsPanel } from './components/attachments-panel'
 import { PriorityLabel, StatusBadge } from './components/badges'
@@ -34,6 +35,7 @@ export function TicketDetailPage() {
   const { id = '' } = useParams()
   const ticket = useTicket(id)
   const canSeeCustomers = useCan('customers.view')
+  const canSeeSLA = useCan('sla.view')
 
   if (ticket.isPending) {
     return <div className="space-y-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-48" /><Skeleton className="h-32" /></div>
@@ -89,6 +91,7 @@ export function TicketDetailPage() {
         </div>
 
         <aside className="space-y-6">
+          {canSeeSLA && <TicketSLAPanel ticketId={t.id} />}
           <AIPanel ticketId={t.id} closed={t.status === 'closed' || !!t.archived_at} />
           <Card>
             <CardHeader><CardTitle>Details</CardTitle></CardHeader>

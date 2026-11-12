@@ -12,6 +12,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useCan } from '@/stores/auth'
+import { SLAChip } from '@/features/sla/components/sla-status'
 import { type TicketFilters, useTickets } from './api'
 import { PriorityLabel, StatusBadge } from './components/badges'
 import { PRIORITIES, PRIORITY_LABEL, STATUSES, STATUS_LABEL } from './constants'
@@ -145,7 +146,7 @@ export function TicketsPage() {
                       <TableCell><PriorityLabel priority={t.priority} /></TableCell>
                       <TableCell className="hidden lg:table-cell">{t.assigned_agent?.full_name ?? <span className="text-muted-foreground">Unassigned</span>}</TableCell>
                       <TableCell className="hidden xl:table-cell">
-                        {t.due_at ? (
+                        {t.sla ? <SLAChip sla={t.sla} /> : t.due_at ? (
                           <span className={cn(t.is_overdue && 'font-medium text-destructive')} title={formatDateTime(t.due_at)}>
                             {t.is_overdue ? 'Overdue · ' : ''}{formatRelative(t.due_at)}
                           </span>

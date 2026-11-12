@@ -171,12 +171,16 @@ handlers that do I/O enqueue Celery tasks *on transaction commit*
 
 ### 4.2 Frontend ↔ Backend: real-time
 
-- WebSocket endpoint `/ws/events/` authenticated with a short-lived JWT passed as
-  a query parameter on connect (browsers can't set WS headers), validated server-side.
-- On connect the consumer joins groups derived **server-side** from the user:
-  `user.<id>`, `org.<id>`, and role-specific groups (e.g. `org.<id>.dispatch`).
-- Server pushes typed events: `notification.created`, `ticket.updated`,
-  `work_order.status_changed`, `sla.warning`, `ai.analysis.completed`.
+- WebSocket endpoint `/ws/events/`. Browsers can't set headers on a WebSocket, so the
+  short-lived access JWT is sent as the **first message** (`{"type": "auth", "token": …}`)
+  rather than in the URL, which keeps it out of proxy access logs. Unauthenticated
+  sockets are closed after 10 s; the server closes with code 4401 when the token expires,
+  and the client refreshes it and reconnects.
+- After auth the consumer joins groups derived **server-side** from the membership:
+  `u.<user>.<org>` always, `o.<org>.staff` with `tickets.view_all`, `o.<org>.dispatch`
+  with `work_orders.view_all`. Customers and technicians only get their own events.
+- Server pushes carry IDs only: `notification.created`, `notification.read`,
+  `ticket.changed`, `work_order.changed`, `sla.changed`.
 - The client uses events to invalidate TanStack Query caches rather than treating
   WS payloads as the source of truth — REST remains authoritative.
 

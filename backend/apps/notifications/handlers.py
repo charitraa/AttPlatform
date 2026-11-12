@@ -59,7 +59,9 @@ def push_ticket_change(event: events.Event) -> None:
     # Technicians only see tickets assigned to them, so they get their own copy.
     ticket = _ticket(event)
     if ticket and ticket.assigned_technician_id:
-        realtime.push(realtime.user_group(ticket.assigned_technician_id, ticket.organization_id), "ticket.changed", **data)
+        realtime.push(
+            realtime.user_group(ticket.assigned_technician_id, ticket.organization_id), "ticket.changed", **data
+        )
 
 
 @events.subscribe("work_order.created", on_commit=True)
@@ -193,8 +195,11 @@ def notify_sla(event: events.Event) -> None:
         organization=ticket.organization,
         recipients=recipients,
         type=T.SLA_BREACHED if breached else T.SLA_WARNING,
-        title=(f"{ticket.reference} breached its {metric} target" if breached
-               else f"{ticket.reference} is close to its {metric} deadline"),
+        title=(
+            f"{ticket.reference} breached its {metric} target"
+            if breached
+            else f"{ticket.reference} is close to its {metric} deadline"
+        ),
         body=f"{ticket.title} · {ticket.get_priority_display()} · due {when}",
         link=f"/tickets/{ticket.id}",
         data={"ticket_id": str(ticket.id), "metric": p["metric"]},

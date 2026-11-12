@@ -283,3 +283,77 @@ def test_openai_compatible_requires_http_url_and_model():
     with pytest.raises(ProviderConfigError):
         OpenAICompatibleProvider(api_key="", model="", base_url="https://llm.internal/v1")
     assert OpenAICompatibleProvider(api_key="", model="m", base_url="https://llm.internal/v1/").base_url.endswith("/v1")
+
+
+# ------------------------------------------------- OpenAI-compatible responses
+def _compat(monkeypatch, message: dict, finish="stop", status=200):
+    """Run the OpenAI-compatible provider against a canned HTTP response; returns (provider, sent bodies)."""
+    import io
+    import json as _json
+    import urllib.error
+
+    from apps.ai.providers import openai_compatible as mod
+
+    sent = []
+
+    def fake_urlopen(req, timeout):
+        sent.append(_json.loads(req.data))
+        if status != 200:
+            raise urllib.error.HTTPError(req.full_url, status, "x", {}, io.BytesIO(b"{}"))
+        body = {
+            "model": "nvidia/x",
+            "choices": [{"message": {"role": "assistant", **message}, "finish_reason": finish}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        }
+        return io.BytesIO(_json.dumps(body).encode())
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    provider = mod.OpenAICompatibleProvider(
+        api_key="k", model="nvidia/x", base_url="https://integrate.api.nvidia.com/v1"
+    )
+    return provider, sent
+
+
+REQ = AIRequest(capability="priority", system="s", prompt="p", schema={"type": "object"})
+
+
+def test_openai_compatible_parses_json_and_ignores_reasoning(monkeypatch):
+    provider, sent = _compat(monkeypatch, {"content": '{"priority": "high"}', "reasoning_content": "thinking…"})
+    result = provider.complete_json(REQ, timeout=5)
+    assert result.data == {"priority": "high"} and (result.tokens_in, result.tokens_out) == (10, 20)
+    assert sent[0]["response_format"]["json_schema"]["strict"] is True
+
+
+def test_openai_compatible_reports_truncation_refusal_and_empty_content(monkeypatch):
+    # Reasoning models spend hidden tokens from the same budget: running out leaves no answer.
+    provider, _ = _compat(monkeypatch, {"content": "", "reasoning_content": "long thoughts"}, finish="length")
+    with pytest.raises(InvalidResponse, match="cut off"):
+        provider.complete_json(REQ, timeout=5)
+    provider, _ = _compat(monkeypatch, {"content": None}, finish="content_filter")
+    with pytest.raises(Refused):
+        provider.complete_json(REQ, timeout=5)
+    provider, _ = _compat(monkeypatch, {"content": None, "refusal": "I can't help with that."})
+    with pytest.raises(Refused, match="can't help"):
+        provider.complete_json(REQ, timeout=5)
+    provider, _ = _compat(monkeypatch, {"content": None})
+    with pytest.raises(InvalidResponse, match="no answer"):
+        provider.complete_json(REQ, timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [(429, RateLimited), (503, ProviderUnavailable), (404, ProviderConfigError), (410, ProviderConfigError)],
+)
+def test_openai_compatible_maps_http_errors(monkeypatch, status, error):
+    provider, _ = _compat(monkeypatch, {}, status=status)
+    with pytest.raises(error):
+        provider.complete_json(REQ, timeout=5)
+
+
+def test_reply_prompt_greets_by_name_or_neutrally():
+    base = {"title": "t", "description": "d", "status": "open", "comments": [], "articles": []}
+    named = build_prompt("response_suggestion", {**base, "contact_name": "Sita Rai"})
+    assert "Address the customer contact as: Sita Rai" in named
+    anonymous = build_prompt("response_suggestion", {**base, "contact_name": ""})
+    assert "neutral greeting" in anonymous and "as: the customer" not in anonymous
+    assert SPECS["response_suggestion"].version == "response-v2"

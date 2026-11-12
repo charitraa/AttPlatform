@@ -34,6 +34,8 @@ const TechniciansPage = named(() => import('@/features/field-service/technicians
 const TechnicianDetailPage = named(() => import('@/features/field-service/technician-detail-page'), 'TechnicianDetailPage')
 const SchedulePage = named(() => import('@/features/field-service/schedule-page'), 'SchedulePage')
 const MyJobsPage = named(() => import('@/features/field-service/my-jobs-page'), 'MyJobsPage')
+const NotificationsPage = named(() => import('@/features/notifications/notifications-page'), 'NotificationsPage')
+const SLAPage = named(() => import('@/features/sla/sla-page'), 'SLAPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -52,6 +54,8 @@ const implemented: Record<string, ReactNode> = {
   '/technicians': <TechniciansPage />,
   '/schedule': <SchedulePage />,
   '/my-jobs': <MyJobsPage />,
+  '/notifications': <NotificationsPage />,
+  '/sla': <SLAPage />,
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }

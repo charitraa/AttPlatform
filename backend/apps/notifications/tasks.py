@@ -10,7 +10,9 @@ logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 5
 
 
-@shared_task(name="notifications.deliver_email", bind=True, queue="notifications", acks_late=True, max_retries=MAX_ATTEMPTS)
+@shared_task(
+    name="notifications.deliver_email", bind=True, queue="notifications", acks_late=True, max_retries=MAX_ATTEMPTS
+)
 def deliver_email(self, delivery_id: str) -> str:
     """Send one email delivery. Idempotent: a delivery already sent is never sent again."""
     from .models import NotificationDelivery

@@ -36,7 +36,7 @@ export function setTokenRefresher(refresher: Refresher | null) {
 }
 
 /** Concurrent 401s share one refresh request (refresh tokens rotate and are single-use). */
-function refreshOnce(): Promise<string | null> {
+export function refreshOnce(): Promise<string | null> {
   if (!refreshAccessToken) return Promise.resolve(null)
   refreshInFlight ??= refreshAccessToken().finally(() => {
     refreshInFlight = null

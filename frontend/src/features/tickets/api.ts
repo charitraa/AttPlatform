@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
+import { slaSummarySchema } from '@/features/sla/api'
 import { api } from '@/lib/api/client'
 import { paginated, toQuery } from '@/lib/api/pagination'
 import { PRIORITIES, STATUSES } from './constants'
@@ -23,6 +24,8 @@ export const ticketListItemSchema = z.object({
   assigned_technician: userRef.nullable(),
   due_at: z.string().nullable(),
   is_overdue: z.boolean(),
+  /** Present for people with sla.view when a policy applies. */
+  sla: slaSummarySchema.nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
   archived_at: z.string().nullable(),

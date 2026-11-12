@@ -195,9 +195,21 @@ affects the ticket; the analysis carries a readable `error`. Every analysis reco
 `/schedule/?start=&end=&technician=`, `/me/work-orders/` (technician app).
 
 ### SLA & notifications (Phase 6)
-`/sla/policies/`, `/sla/business-hours/`, `/tickets/{id}/sla/`, `/sla/report/`,
-`/notifications/`, `/notifications/{id}/read/`, `/notifications/read-all/`,
-`/notifications/preferences/`. WebSocket: `/ws/events/?token=<access>`.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET/POST | `/sla/policies/` | `sla.view` / `sla.manage`. Targets nested per priority; the default policy must cover every priority and can't be deleted or deactivated. |
+| GET/PATCH/PUT/DELETE | `/sla/policies/{id}/` | Edits apply to new clocks only (running clocks keep their snapshot). |
+| GET/POST | `/sla/business-hours/` | Weekly schedule `{"mon": [["09:00","17:00"]], …}` (`24:00` allowed as an end), IANA time zone, holidays. 409 on delete while a policy uses it. |
+| GET | `/tickets/{id}/sla/` | Clock state, remaining *working* seconds per metric, events. `null` when no policy applies. Needs `sla.view` and ticket visibility. |
+| GET | `/sla/report/?start=&end=` | Met/breached per priority for tickets opened in the range (default 30 days, max 366). |
+| GET | `/notifications/?unread=1` | Own in-app notifications in the active organization. |
+| GET | `/notifications/unread-count/` | `{"unread": n}` |
+| POST | `/notifications/{id}/read/`, `/notifications/read-all/` | `read-all` takes optional `{"ids": [...]}`. |
+| GET/PUT | `/notifications/preferences/` | List of `{type, channel, enabled}`; PUT accepts a partial list. |
+
+Ticket list/detail responses include `sla` (compact status) for people with `sla.view`.
+WebSocket: `/ws/events/`, authenticated by the first message (see architecture §4.2).
 
 ### Integrations, analytics, portal (Phase 5/7)
 `/assets/{id}/service-records/`, `/integrations/`,

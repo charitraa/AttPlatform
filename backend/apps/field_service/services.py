@@ -278,7 +278,9 @@ def advance(
     audit.record(
         "work_order.status_changed", request=request, target=wo, changes={"status": {"from": old, "to": to_status}}
     )
-    _publish("work_order.status_changed", wo, old_status=old, new_status=to_status, actor_id=str(tenant.membership.user.pk))
+    _publish(
+        "work_order.status_changed", wo, old_status=old, new_status=to_status, actor_id=str(tenant.membership.user.pk)
+    )
     return wo
 
 
@@ -316,7 +318,13 @@ def decline(*, tenant: TenantContext, work_order: WorkOrder, reason: str, reques
     wo.save(update_fields=["technician", "status", "scheduled_start", "scheduled_end", "updated_at"])
     _log(wo, tenant.membership.user, old, WorkOrderStatus.CREATED, note=f"Declined by {tech}: {reason.strip()}")
     audit.record("work_order.declined", request=request, target=wo, changes={"reason": reason.strip()[:300]})
-    _publish("work_order.declined", wo, technician_user_id=str(tech.user_id), actor_id=str(tenant.membership.user.pk), reason=reason.strip()[:300])
+    _publish(
+        "work_order.declined",
+        wo,
+        technician_user_id=str(tech.user_id),
+        actor_id=str(tenant.membership.user.pk),
+        reason=reason.strip()[:300],
+    )
     return wo
 
 

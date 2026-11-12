@@ -36,8 +36,13 @@ def always(org):
 def create(client_for, setup, customer=None, **extra):
     r = client_for(setup["agent"]).post(
         "/api/v1/tickets/",
-        {"title": "AC down", "description": "Hot", "customer": str((customer or setup["customer"]).id),
-         "priority": "high", **extra},
+        {
+            "title": "AC down",
+            "description": "Hot",
+            "customer": str((customer or setup["customer"]).id),
+            "priority": "high",
+            **extra,
+        },
         format="json",
     )
     assert r.status_code == 201, r.json()
@@ -61,7 +66,12 @@ def test_creating_a_ticket_starts_the_clock_and_sets_due_at(client_for, setup, o
     always(org)
     ticket = create(client_for, setup)
     sla = ticket.sla
-    assert (sla.policy_name, sla.priority, sla.response_minutes, sla.resolution_minutes) == ("Standard", "high", 60, 480)
+    assert (sla.policy_name, sla.priority, sla.response_minutes, sla.resolution_minutes) == (
+        "Standard",
+        "high",
+        60,
+        480,
+    )
     assert sla.response_due_at == sla.started_at + timedelta(hours=1)
     assert sla.resolution_due_at == sla.started_at + timedelta(hours=8)
     assert sla.resolution_warn_at == sla.started_at + timedelta(hours=8 * 0.8)
@@ -104,8 +114,9 @@ def test_waiting_on_the_customer_pauses_only_the_resolution_clock(client_for, se
 def test_a_customer_reply_resumes_the_clock_without_a_status_event(client_for, setup, org, make_member):
     always(org)
     ticket = create(client_for, setup)
-    client_for(setup["agent"]).post(f"/api/v1/tickets/{ticket.id}/transition/", {"status": "pending_customer"},
-                                    format="json")
+    client_for(setup["agent"]).post(
+        f"/api/v1/tickets/{ticket.id}/transition/", {"status": "pending_customer"}, format="json"
+    )
     assert SLAInstance.objects.get(ticket=ticket).is_paused
     portal = make_member(org, RoleCode.CUSTOMER, email="cust@bank.test")
     setup["customer"].contacts.create(name="Cust", email="cust@bank.test", user=portal.user)
@@ -161,8 +172,9 @@ def test_policy_edits_do_not_rewrite_running_clocks(client_for, setup, org):
 # ------------------------------------------------------------------ matching
 def test_most_specific_policy_wins_and_falls_back_without_a_target(client_for, setup, org):
     always(org)
-    vip = SLAPolicy.objects.create(organization=org, name="Enterprise", conditions={"customer_tiers": ["enterprise"]},
-                                   priority_order=10)
+    vip = SLAPolicy.objects.create(
+        organization=org, name="Enterprise", conditions={"customer_tiers": ["enterprise"]}, priority_order=10
+    )
     SLATarget.objects.create(policy=vip, priority="high", first_response_minutes=15, resolution_minutes=120)
     assert create(client_for, setup, customer=setup["gold"]).sla.policy_name == "Enterprise"
     assert create(client_for, setup).sla.policy_name == "Standard"
@@ -173,8 +185,12 @@ def test_most_specific_policy_wins_and_falls_back_without_a_target(client_for, s
 def test_category_and_channel_conditions(client_for, setup, org):
     always(org)
     hvac = TicketCategory.objects.create(organization=org, name="HVAC")
-    p = SLAPolicy.objects.create(organization=org, name="HVAC phone",
-                                 conditions={"categories": [str(hvac.id)], "channels": ["phone"]}, priority_order=5)
+    p = SLAPolicy.objects.create(
+        organization=org,
+        name="HVAC phone",
+        conditions={"categories": [str(hvac.id)], "channels": ["phone"]},
+        priority_order=5,
+    )
     SLATarget.objects.create(policy=p, priority="high", first_response_minutes=10, resolution_minutes=60)
     assert create(client_for, setup, category=str(hvac.id), channel="phone").sla.policy_name == "HVAC phone"
     assert create(client_for, setup, category=str(hvac.id), channel="email").sla.policy_name == "Standard"
@@ -191,8 +207,9 @@ def test_inactive_policies_are_ignored(client_for, setup, org):
 def test_monitor_warns_then_breaches_once_and_escalates(client_for, setup, org, django_capture_on_commit_callbacks):
     always(org)
     ticket = create(client_for, setup)
-    client_for(setup["agent"]).post(f"/api/v1/tickets/{ticket.id}/comments/", {"body": "Hi", "visibility": "public"},
-                                    format="json")
+    client_for(setup["agent"]).post(
+        f"/api/v1/tickets/{ticket.id}/comments/", {"body": "Hi", "visibility": "public"}, format="json"
+    )
     start = SLAInstance.objects.get(ticket=ticket).started_at
 
     assert services.scan(now=start + timedelta(hours=6))["warning"] == 0  # 75 % of 8 h
@@ -210,7 +227,9 @@ def test_monitor_warns_then_breaches_once_and_escalates(client_for, setup, org, 
     hist = TicketHistory.objects.filter(ticket=ticket, field="status", new_value="escalated").get()
     assert hist.actor is None and hist.actor_type == "system"
     assert list(sla.events.filter(type__in=["warning", "breached", "escalated"]).values_list("type", "metric")) == [
-        ("warning", "resolution"), ("breached", "resolution"), ("escalated", "resolution")
+        ("warning", "resolution"),
+        ("breached", "resolution"),
+        ("escalated", "resolution"),
     ]
 
 
@@ -274,8 +293,12 @@ def test_ticket_sla_endpoint_and_list_summary(client_for, setup, org, other_org,
 def test_policy_api_permissions_and_validation(client_for, setup, org, other_org):
     agent, ops = client_for(setup["agent"]), client_for(setup["ops"])
     assert agent.get("/api/v1/sla/policies/").status_code == 200
-    body = {"name": "VIP", "targets": [{"priority": "high", "first_response_minutes": 15, "resolution_minutes": 120}],
-            "conditions": {"customer_tiers": ["enterprise"]}, "priority_order": 10}
+    body = {
+        "name": "VIP",
+        "targets": [{"priority": "high", "first_response_minutes": 15, "resolution_minutes": 120}],
+        "conditions": {"customer_tiers": ["enterprise"]},
+        "priority_order": 10,
+    }
     assert agent.post("/api/v1/sla/policies/", body, format="json").status_code == 403
 
     foreign = TicketCategory.objects.create(organization=other_org, name="Theirs")
@@ -297,22 +320,35 @@ def test_policy_api_permissions_and_validation(client_for, setup, org, other_org
 
 def test_switching_the_default_policy(client_for, setup, org):
     ops = client_for(setup["ops"])
-    targets = [{"priority": p, "first_response_minutes": 10, "resolution_minutes": 100}
-               for p in ("low", "medium", "high", "critical")]
+    targets = [
+        {"priority": p, "first_response_minutes": 10, "resolution_minutes": 100}
+        for p in ("low", "medium", "high", "critical")
+    ]
     r = ops.post("/api/v1/sla/policies/", {"name": "Strict", "is_default": True, "targets": targets}, format="json")
     assert r.status_code == 201, r.json()
-    assert list(SLAPolicy.objects.filter(organization=org, is_default=True).values_list("name", flat=True)) == ["Strict"]
+    assert list(SLAPolicy.objects.filter(organization=org, is_default=True).values_list("name", flat=True)) == [
+        "Strict"
+    ]
 
 
 def test_business_hours_api(client_for, setup, org):
     ops = client_for(setup["ops"])
-    bad = ops.post("/api/v1/sla/business-hours/", {"name": "Night", "timezone": "Mars/Base",
-                                                    "schedule": {"mon": [["22:00", "06:00"]]}}, format="json")
+    bad = ops.post(
+        "/api/v1/sla/business-hours/",
+        {"name": "Night", "timezone": "Mars/Base", "schedule": {"mon": [["22:00", "06:00"]]}},
+        format="json",
+    )
     assert bad.status_code == 400 and {"timezone", "schedule"} <= set(bad.json()["error"]["details"])
-    ok = ops.post("/api/v1/sla/business-hours/", {
-        "name": "Night", "timezone": "Asia/Kathmandu", "schedule": {"mon": [["22:00", "24:00"]]},
-        "holidays": [{"date": "2026-12-25", "name": "Closed"}],
-    }, format="json")
+    ok = ops.post(
+        "/api/v1/sla/business-hours/",
+        {
+            "name": "Night",
+            "timezone": "Asia/Kathmandu",
+            "schedule": {"mon": [["22:00", "24:00"]]},
+            "holidays": [{"date": "2026-12-25", "name": "Closed"}],
+        },
+        format="json",
+    )
     assert ok.status_code == 201, ok.json()
     assert ok.json()["schedule"]["mon"] == [["22:00", "24:00"]] and ok.json()["schedule"]["tue"] == []
     used = BusinessHours.objects.get(organization=org, name="Standard hours")

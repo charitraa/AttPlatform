@@ -114,8 +114,19 @@ class SLAPolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = SLAPolicy
         fields = (
-            "id", "name", "description", "is_default", "is_active", "business_hours", "business_hours_name",
-            "conditions", "priority_order", "escalate_on_breach", "targets", "created_at", "updated_at",
+            "id",
+            "name",
+            "description",
+            "is_default",
+            "is_active",
+            "business_hours",
+            "business_hours_name",
+            "conditions",
+            "priority_order",
+            "escalate_on_breach",
+            "targets",
+            "created_at",
+            "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
 
@@ -153,7 +164,11 @@ class SLAPolicySerializer(serializers.ModelSerializer):
             )
             if missing := [p for p in Priority.values if p not in covered]:
                 raise serializers.ValidationError(
-                    {"targets": [f"The default policy needs a target for every priority (missing: {', '.join(missing)})."]}
+                    {
+                        "targets": [
+                            f"The default policy needs a target for every priority (missing: {', '.join(missing)})."
+                        ]
+                    }
                 )
         elif self.instance and self.instance.is_default and attrs.get("is_default") is False:
             raise serializers.ValidationError({"is_default": ["Make another policy the default instead."]})
@@ -211,11 +226,27 @@ class SLAInstanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = SLAInstance
         fields = (
-            "id", "policy_name", "business_hours_name", "priority", "started_at",
-            "response_minutes", "response_due_at", "response_status", "responded_at", "response_remaining_seconds",
-            "resolution_minutes", "resolution_due_at", "resolution_status", "resolved_at",
-            "resolution_remaining_seconds", "warning_threshold_pct", "paused", "paused_at", "paused_seconds",
-            "escalated_at", "events",
+            "id",
+            "policy_name",
+            "business_hours_name",
+            "priority",
+            "started_at",
+            "response_minutes",
+            "response_due_at",
+            "response_status",
+            "responded_at",
+            "response_remaining_seconds",
+            "resolution_minutes",
+            "resolution_due_at",
+            "resolution_status",
+            "resolved_at",
+            "resolution_remaining_seconds",
+            "warning_threshold_pct",
+            "paused",
+            "paused_at",
+            "paused_seconds",
+            "escalated_at",
+            "events",
         )
 
     def to_representation(self, obj):

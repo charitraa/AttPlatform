@@ -11,7 +11,7 @@ from apps.notifications.models import Notification, NotificationDelivery
 from apps.notifications.tasks import deliver_email
 from apps.organizations.catalog import RoleCode
 from apps.sla import services as sla_services
-from apps.sla.models import SLAPolicy
+from apps.sla.models import SLAInstance, SLAPolicy
 from apps.tickets.models import Ticket
 
 pytestmark = pytest.mark.django_db
@@ -32,9 +32,16 @@ def team(org, make_member):
 @pytest.fixture
 def ticket(client_for, team, django_capture_on_commit_callbacks):
     with django_capture_on_commit_callbacks(execute=True):
-        r = client_for(team["ops"]).post("/api/v1/tickets/", {
-            "title": "ATM offline", "description": "Branch 4", "customer": str(team["customer"].id), "priority": "high",
-        }, format="json")
+        r = client_for(team["ops"]).post(
+            "/api/v1/tickets/",
+            {
+                "title": "ATM offline",
+                "description": "Branch 4",
+                "customer": str(team["customer"].id),
+                "priority": "high",
+            },
+            format="json",
+        )
     assert r.status_code == 201, r.json()
     return Ticket.objects.get(pk=r.json()["id"])
 
@@ -50,7 +57,9 @@ def inbox(member):
 
 
 # ------------------------------------------------------------------ fan-out
-def test_assignment_notifies_the_assignee_in_app_and_by_email(client_for, team, ticket, django_capture_on_commit_callbacks):
+def test_assignment_notifies_the_assignee_in_app_and_by_email(
+    client_for, team, ticket, django_capture_on_commit_callbacks
+):
     assign(client_for(team["ops"]), ticket, team["agent"], django_capture_on_commit_callbacks)
     n = Notification.objects.get(recipient=team["agent"].user)
     assert n.type == "ticket_assigned" and n.link == f"/tickets/{ticket.id}" and ticket.reference in n.title
@@ -69,17 +78,24 @@ def test_preferences_control_channels(client_for, team, ticket, django_capture_o
     agent = client_for(team["agent"])
     prefs = agent.get("/api/v1/notifications/preferences/").json()
     assert {"type": "ticket_assigned", "label": "Ticket assigned to me", "channel": "email", "enabled": True} in prefs
-    r = agent.put("/api/v1/notifications/preferences/", [
-        {"type": "ticket_assigned", "channel": "in_app", "enabled": False},
-    ], format="json")
+    r = agent.put(
+        "/api/v1/notifications/preferences/",
+        [
+            {"type": "ticket_assigned", "channel": "in_app", "enabled": False},
+        ],
+        format="json",
+    )
     assert r.status_code == 200
     assign(client_for(team["ops"]), ticket, team["agent"], django_capture_on_commit_callbacks)
     n = Notification.objects.get(recipient=team["agent"].user)
     assert n.in_app is False and len(mail.outbox) == 1  # email only
     assert agent.get("/api/v1/notifications/").json()["count"] == 0
 
-    agent.put("/api/v1/notifications/preferences/", [{"type": "ticket_assigned", "channel": "email", "enabled": False}],
-              format="json")
+    agent.put(
+        "/api/v1/notifications/preferences/",
+        [{"type": "ticket_assigned", "channel": "email", "enabled": False}],
+        format="json",
+    )
     assign(client_for(team["ops"]), ticket, team["agent2"], django_capture_on_commit_callbacks)
     assign(client_for(team["ops"]), ticket, team["agent"], django_capture_on_commit_callbacks)
     assert Notification.objects.filter(recipient=team["agent"].user).count() == 1  # both channels off: nothing new
@@ -91,8 +107,9 @@ def test_inactive_members_are_not_notified(team, org):
     assert services.notify(organization=org, recipients=[team["agent"].user], type="ticket_assigned", title="x") == []
 
 
-def test_customer_reply_and_reopen_notify_the_agent(client_for, team, ticket, org, make_member,
-                                                     django_capture_on_commit_callbacks):
+def test_customer_reply_and_reopen_notify_the_agent(
+    client_for, team, ticket, org, make_member, django_capture_on_commit_callbacks
+):
     assign(client_for(team["ops"]), ticket, team["agent"], django_capture_on_commit_callbacks)
     portal = make_member(org, RoleCode.CUSTOMER, email="cust@bank.test")
     team["customer"].contacts.create(name="Cust", email="cust@bank.test", user=portal.user)
@@ -101,16 +118,22 @@ def test_customer_reply_and_reopen_notify_the_agent(client_for, team, ticket, or
     assert "customer_reply" in inbox(team["agent"])
 
     with django_capture_on_commit_callbacks(execute=True):
-        client_for(team["agent"]).post(f"/api/v1/tickets/{ticket.id}/transition/",
-                                       {"status": "resolved", "resolution_notes": "Rebooted"}, format="json")
+        client_for(team["agent"]).post(
+            f"/api/v1/tickets/{ticket.id}/transition/",
+            {"status": "resolved", "resolution_notes": "Rebooted"},
+            format="json",
+        )
         r = client_for(portal).post(f"/api/v1/tickets/{ticket.id}/transition/", {"status": "reopened"}, format="json")
     assert r.status_code == 200, r.json()
     assert "ticket_reopened" in inbox(team["agent"])
 
 
-def test_sla_warning_goes_to_the_owner_and_breach_also_to_managers(client_for, team, ticket, org,
-                                                                    django_capture_on_commit_callbacks):
+def test_sla_warning_goes_to_the_owner_and_breach_also_to_managers(
+    client_for, team, ticket, org, django_capture_on_commit_callbacks
+):
     SLAPolicy.objects.filter(organization=org).update(business_hours=None, escalate_on_breach=False)
+    # The clock already started on the working-hours calendar (a snapshot); switch this one to 24/7 too.
+    SLAInstance.objects.filter(ticket=ticket).update(business_hours=None)
     Ticket.objects.filter(pk=ticket.pk).update(priority="medium")
     sla_services.sync_ticket(ticket.pk)  # retarget on the 24/7 calendar
     assign(client_for(team["ops"]), ticket, team["agent"], django_capture_on_commit_callbacks)
@@ -126,14 +149,16 @@ def test_sla_warning_goes_to_the_owner_and_breach_also_to_managers(client_for, t
 def test_work_order_assignment_and_completion(client_for, team, ticket, django_capture_on_commit_callbacks):
     tech = Technician.objects.get(user=team["tech"].user)
     with django_capture_on_commit_callbacks(execute=True):
-        r = client_for(team["ops"]).post("/api/v1/work-orders/", {"ticket": str(ticket.id), "technician": str(tech.id)},
-                                         format="json")
+        r = client_for(team["ops"]).post(
+            "/api/v1/work-orders/", {"ticket": str(ticket.id), "technician": str(tech.id)}, format="json"
+        )
     assert r.status_code == 201, r.json()
     assert inbox(team["tech"]) == ["work_order_assigned"]
     wo = r.json()
     with django_capture_on_commit_callbacks(execute=True):
-        client_for(team["ops"]).post(f"/api/v1/work-orders/{wo['id']}/cancel/", {"reason": "Fixed remotely"},
-                                     format="json")
+        client_for(team["ops"]).post(
+            f"/api/v1/work-orders/{wo['id']}/cancel/", {"reason": "Fixed remotely"}, format="json"
+        )
     assert "work_order_updated" in inbox(team["tech"])
 
 
@@ -158,18 +183,21 @@ def test_inbox_is_private_and_supports_read_state(client_for, team, org, other_o
 
 # ---------------------------------------------------------------- delivery
 def test_email_delivery_retries_then_fails_and_never_double_sends(team, org):
-    # Callbacks aren't run here: the test drives each worker attempt itself.
+    # Callbacks aren't run here: the test drives each worker attempt itself. Called directly,
+    # `self.retry()` re-raises the original error, which is what schedules the next attempt on a worker.
     services.notify(organization=org, recipients=[team["agent"].user], type="ticket_assigned", title="x")
     d = NotificationDelivery.objects.get()
     with mock.patch("apps.notifications.tasks.send_mail", side_effect=OSError("SMTP down")) as send:
-        outcomes = [deliver_email.apply(args=[str(d.id)], throw=False) for _ in range(6)]
-    assert [o.state for o in outcomes[:4]] == ["RETRY"] * 4  # scheduled for another attempt
-    assert outcomes[4].get() == "failed" and outcomes[5].get() == "skipped"  # gives up after 5, then stays failed
+        for _ in range(4):
+            with pytest.raises(OSError):
+                deliver_email.run(str(d.id))
+        assert deliver_email.run(str(d.id)) == "failed"  # gives up after 5 attempts
+        assert deliver_email.run(str(d.id)) == "skipped"  # and stays failed
     d.refresh_from_db()
     assert (d.status, d.attempts, d.last_error) == ("failed", 5, "SMTP down") and send.call_count == 5
 
     d.status = "pending"
     d.save()
-    assert deliver_email.apply(args=[str(d.id)]).get() == "sent"
-    assert deliver_email.apply(args=[str(d.id)]).get() == "skipped"
+    assert deliver_email.run(str(d.id)) == "sent"
+    assert deliver_email.run(str(d.id)) == "skipped"  # never sent twice
     assert len(mail.outbox) == 1

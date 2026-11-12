@@ -123,7 +123,5 @@ def mark_read(user, organization, ids=None) -> int:
         qs = qs.filter(id__in=ids)
     count = qs.update(read_at=timezone.now(), updated_at=timezone.now())
     if count:
-        transaction.on_commit(
-            lambda: realtime.push(realtime.user_group(user.pk, organization.pk), "notification.read")
-        )
+        transaction.on_commit(lambda: realtime.push(realtime.user_group(user.pk, organization.pk), "notification.read"))
     return count

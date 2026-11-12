@@ -54,7 +54,9 @@ def test_holidays_and_split_shifts():
 def test_overnight_shift_with_24_00_and_midnight_start():
     c = cal(tz="UTC", schedule={d: [["00:00", "06:00"], ["22:00", "24:00"]] for d in ("mon", "tue")})
     # Monday 23:00 + 2h → 1h Monday night + 1h Tuesday early
-    assert add_business_seconds(c, datetime(2026, 11, 16, 23, tzinfo=UTC), 2 * H) == datetime(2026, 11, 17, 1, tzinfo=UTC)
+    assert add_business_seconds(c, datetime(2026, 11, 16, 23, tzinfo=UTC), 2 * H) == datetime(
+        2026, 11, 17, 1, tzinfo=UTC
+    )
 
 
 def test_dst_day_is_measured_in_real_seconds():

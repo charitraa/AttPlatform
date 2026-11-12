@@ -93,7 +93,7 @@ SPECS: dict[str, PromptSpec] = {
     ),
     "response_suggestion": PromptSpec(
         "response_suggestion",
-        "response-v1",
+        "response-v2",  # v2: neutral greeting when no contact name is known (v1 produced "Dear the customer")
         "Draft a reply from a support agent to the customer. Be warm, specific and honest; never promise times or "
         "fixes that are not supported by the ticket. Do not mention internal processes. Use the provided "
         f"knowledge articles when relevant and list the ones you used. {_UNTRUSTED}",
@@ -178,7 +178,12 @@ def build_prompt(capability: str, context: dict) -> str:
                 tag("ticket", {k: c.get(k) for k in ("title", "description", "status")}),
                 tag("conversation", c.get("comments", [])),
                 tag("articles", c.get("articles", [])),
-                f"Address the customer contact as: {c.get('contact_name') or 'the customer'}",
+                (
+                    f"Address the customer contact as: {c['contact_name']}"
+                    if c.get("contact_name")
+                    else 'No contact name is known: open with a neutral greeting such as "Hello," and never '
+                    'write a placeholder like "Dear the customer" or "[Name]".'
+                ),
             ]
         )
     if capability == "routing_explanation":

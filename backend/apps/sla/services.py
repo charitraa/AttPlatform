@@ -246,9 +246,18 @@ def _monitor_sets(now: datetime):
     running = Q(paused_at__isnull=True)
     return (
         (R, MetricStatus.BREACHED, Q(response_status__in=OPEN_METRIC, response_due_at__lte=now)),
-        (R, MetricStatus.WARNING, Q(response_status=MetricStatus.ON_TRACK, response_warn_at__lte=now, response_due_at__gt=now)),
+        (
+            R,
+            MetricStatus.WARNING,
+            Q(response_status=MetricStatus.ON_TRACK, response_warn_at__lte=now, response_due_at__gt=now),
+        ),
         (S, MetricStatus.BREACHED, running & Q(resolution_status__in=OPEN_METRIC, resolution_due_at__lte=now)),
-        (S, MetricStatus.WARNING, running & Q(resolution_status=MetricStatus.ON_TRACK, resolution_warn_at__lte=now, resolution_due_at__gt=now)),
+        (
+            S,
+            MetricStatus.WARNING,
+            running
+            & Q(resolution_status=MetricStatus.ON_TRACK, resolution_warn_at__lte=now, resolution_due_at__gt=now),
+        ),
     )
 
 

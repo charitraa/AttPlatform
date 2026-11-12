@@ -9,6 +9,7 @@ from config.routing import websocket_urlpatterns
 
 
 @pytest.mark.asyncio
+@pytest.mark.django_db  # Channels closes stale DB connections on connect; allow it once earlier tests opened one
 async def test_system_websocket_welcome_and_ping():
     communicator = WebsocketCommunicator(application, "/ws/system/", headers=[(b"origin", b"http://localhost")])
     connected, _ = await communicator.connect()

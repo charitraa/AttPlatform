@@ -18,6 +18,11 @@ export const handlers = [
   http.post(`${API}/auth/logout/`, () => new HttpResponse(null, { status: 204 })),
   // Ticket pages mount the AI panel; default to "no analyses yet".
   http.get(`${API}/tickets/:id/ai/`, () => HttpResponse.json({ analyses: [], recommendations: [], ai_enabled: true })),
+  // The top bar's notification bell is on every page; default to an empty inbox.
+  http.get(`${API}/notifications/unread-count/`, () => HttpResponse.json({ unread: 0 })),
+  http.get(`${API}/notifications/`, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+  // Ticket pages show the SLA panel for people with sla.view; default to "no policy applies".
+  http.get(`${API}/tickets/:id/sla/`, () => HttpResponse.json(null)),
   http.get(`${API}/health/`, () => HttpResponse.json(fixtures.health)),
   http.get(`${API}/health/ready/`, () => HttpResponse.json(fixtures.readyOk)),
   http.get(`${API}/meta/`, () => HttpResponse.json(fixtures.meta)),

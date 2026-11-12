@@ -59,8 +59,13 @@ class BusinessHoursViewSet(_AuditedViewSet):
             instance.delete()
         except ProtectedError as exc:
             raise Conflict("Policies still use these working hours. Point them elsewhere first.") from exc
-        audit.record("business_hours.deleted", request=self.request, target_type="sla.businesshours",
-                     target_id=str(instance.pk), changes={"name": instance.name})
+        audit.record(
+            "business_hours.deleted",
+            request=self.request,
+            target_type="sla.businesshours",
+            target_id=str(instance.pk),
+            changes={"name": instance.name},
+        )
 
 
 @extend_schema(tags=["sla"])
@@ -80,8 +85,13 @@ class SLAPolicyViewSet(_AuditedViewSet):
             raise Conflict("The default policy can't be deleted. Make another policy the default first.")
         pk, name = instance.pk, instance.name
         instance.delete()  # running SLA clocks keep their snapshot (policy is SET_NULL)
-        audit.record("sla_policy.deleted", request=self.request, target_type="sla.slapolicy",
-                     target_id=str(pk), changes={"name": name})
+        audit.record(
+            "sla_policy.deleted",
+            request=self.request,
+            target_type="sla.slapolicy",
+            target_id=str(pk),
+            changes={"name": name},
+        )
 
 
 @extend_schema(tags=["sla"], responses=SLAInstanceSerializer)

@@ -281,9 +281,8 @@
   polling helper (`waitForAnalysis`) with a timeout.
 
 ### Known gaps carried forward
-- No live run against a real model in this environment (no API key configured). The
-  Anthropic provider is covered by request-shape and error-mapping tests against a fake
-  SDK client.
+- ~~No live run against a real model~~. Resolved 2026-11-12: every capability verified live on
+  NVIDIA Nemotron 3 Ultra through the OpenAI-compatible provider (see Phase 6 follow-up).
 - Retrieval is keyword full-text search; semantic search (pgvector + embeddings) is the
   planned upgrade behind `retrieval.search`.
 - Technician routing uses workload and experience only until skills, availability and
@@ -368,9 +367,115 @@
   during schema generation; to fix in Phase 8. Ruff formatting has drifted in 23 files
   outside field service.
 
-## Phase 6 — SLA, notifications, real-time (next)
+## Phase 6 — SLA, notifications, real-time ✅ (2026-11-12)
 
-Business hours, SLA policies and targets, SLA instances with a monitor task, warnings,
-breaches and escalation. Notifications (in-app, email) with preferences, WebSocket push
-and client cache invalidation. Frontend: SLA management, notification centre, live
-countdowns.
+### Completed
+
+**Backend: `apps.sla`**
+- `business_time.py`: pure working-time arithmetic (weekly intervals, split and overnight
+  shifts with `24:00`, holidays, IANA time zones). All maths runs on UTC instants, so DST
+  days are measured in real seconds; there's a test for the London clock change.
+- Working hours and holidays, policies with per-priority targets (first response,
+  resolution, warning threshold) and conditions (category, customer tier, channel), an
+  evaluation order, and a single default policy per organization (database constraint). New
+  organizations get "Standard hours" (Sun–Fri 09–17 in the org time zone) and a "Standard"
+  policy automatically; a migration does the same for existing ones.
+- `SLAInstance` per ticket copies the targets and calendar when applied, so policy edits never
+  rewrite running clocks. Deadlines are `start + target + paused working time`, so recomputing
+  after a pause, resume or priority change is a pure function of stored fields.
+- `sync_ticket` reconciles the clock with the ticket's *current* state after every ticket event
+  (inside the ticket's transaction), so every path that changes a ticket keeps the clock right,
+  including customer replies that change status without a status event. The resolution clock
+  pauses on Pending customer / Pending parts and between resolve and reopen. First response is
+  met by the first public staff reply (or by resolving). Priority changes take the new target.
+  A breach is final; resolving late stays "breached".
+- Monitor (`sla.scan`, beat every minute, `sla` queue): warnings and breaches per metric are
+  recorded once (partial unique constraint), with row locks and `skip_locked` so concurrent
+  runs are safe. A clock already past its deadline goes straight to breached with no late
+  warning. A resolution breach escalates the ticket through the normal transition table
+  (system actor in history and audit) when the policy allows it.
+- Compliance report per priority. The dashboard's `sla_compliance` is now real (for `sla.view`).
+- `sla_backfill` command starts clocks for open tickets created before SLA existed.
+
+**Backend: `apps.notifications` and real-time**
+- Notifications (8 types), per-user preferences per type × channel with sensible defaults
+  (email only for things that need action), and email deliveries with status, attempts and
+  last error. Delivery runs as a retried Celery task with backoff, gives up after 5 attempts,
+  and never sends twice (row lock + status check). Inactive members are never notified; nobody
+  is notified about their own action (`actor_id` added to ticket and work-order events).
+- Subscribers (after commit): ticket assigned, customer reply, escalated (manual), reopened by
+  customer, SLA at risk (owner, or managers if unassigned), SLA breached (owner + managers),
+  work order assigned, completed, handed back or cancelled. A technician assigned through a work
+  order gets the job notification, not a second "ticket assigned" one.
+- `/ws/events/`: the JWT goes in the first message (never the URL), with a 10 s auth deadline
+  and close 4401 on expiry. Groups are derived server-side (own user; staff group only with
+  `tickets.view_all`; dispatch group only with `work_orders.view_all`). Pushes carry IDs only,
+  and a broker outage never breaks the operation that triggered a push.
+
+**Frontend**
+- Event stream in the app shell: auth by first message, cache invalidation per event type,
+  toast with "View" for new notifications, token refresh + reconnect on 4401, backoff on other
+  drops, stays closed when the session is gone.
+- Notification bell with unread badge and recent items, mark read / all read; Notifications
+  page with inbox (all / unread, paging) and a preferences grid.
+- Ticket page SLA panel: per metric status, progress, working time left or overdue, pause
+  notice, calendar and clock history. The server supplies remaining *working* time; the
+  panel ticks locally only for 24/7 clocks and refreshes every minute otherwise.
+- Ticket list SLA chip showing the metric that needs attention first.
+- SLA page: compliance report (7/30/90/365 days), policy cards and editor (targets, conditions,
+  calendar, escalation), working-hours editor (weekly intervals, time zone, holidays).
+  Read-only without `sla.manage`.
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest | **263 passed**. New: business time (weekends, holidays, split and overnight shifts, DST, inverse property, validation); SLA (defaults, apply on create, calendar and holidays, pause/resume, resume via a customer reply, first response, resolve and reopen, priority change, policy edits don't rewrite clocks, matching by tier, category and channel, inactive policies, monitor warn → breach → escalate once, response breach without late warning, paused clocks not breached, breach is final, report and dashboard, ticket SLA endpoint visibility, policy and working-hours API validation and permissions, default switching); notifications (assignment in-app + email, no self-notify, preferences, inactive members, customer reply and reopen, SLA warning vs breach recipients, work-order flow, inbox privacy across users and orgs, email retry → failed → no double send); WebSocket (auth, staff-only streams, invalid token, unauthenticated messages, other org, token expiry) |
+| Frontend Vitest | **90 passed**. New: first-message auth, refetch on `ticket.changed`, toast + unread badge, reconnect with a fresh token on 4401, no reconnect without a session, inbox read / read-all, preferences save, SLA panel (at risk, paused, overdue, hidden without `sla.view`), list chip, policy editor (server validation, payload), read-only SLA page |
+| Lint / type-check / build | clean |
+| Live stack | migrations applied; beat → worker runs `sla.scan` every minute; through Nginx: the agent's socket authenticates, an ops assignment over REST arrives live as `ticket.changed` + `notification.created`, a bad token closes with 4401; SLA, report, notification and dashboard endpoints; customer gets 403 on SLA |
+
+### Bugs found and fixed during verification
+- The monitor's row lock joined the nullable policy (`FOR UPDATE` on an outer join), which
+  PostgreSQL refuses. It now locks only the SLA row.
+- The email task saved its failure state inside the transaction it then raised out of, which
+  would have rolled the attempt count back. It now commits each attempt before retrying.
+- WebSocket notification pushes overwrote the message `type` with the notification's own type;
+  that field is now `kind`.
+- Technicians received two notifications for one job (ticket + work order).
+- Report dates without a time zone would have raised on comparison; they're now read in the
+  server time zone.
+
+### Known gaps carried forward
+- **Demo data:** `sla_backfill` measured the old demo tickets from their creation dates, so most
+  came out breached (compliance 0 % in the demo org, 14 tickets escalated). That's correct for
+  the data, but the demo seed should be re-dated in Phase 7 so the dashboard tells a useful story.
+- Nginx resolves the backend's address once at start-up; after recreating the backend
+  container, restart Nginx (502 otherwise). To fix with a `resolver` in Phase 8.
+- Customers can still see a ticket's `due_at` (Phase 3 behaviour); decide what the portal shows in Phase 7.
+- SMS/WhatsApp channels arrive with integrations (Phase 7); notification digests aren't built.
+- MSW's WebSocket handlers don't match under Vitest (two module copies), so real-time tests use
+  a controllable fake socket instead.
+- No visual check in a real browser in this environment.
+
+### Follow-up: live AI provider (2026-11-12)
+- Configured the NVIDIA API catalog through `openai_compatible`. The requested
+  `qwen/qwen3.5-122b-a10b` was retired on 2026-07-20 (410), so I evaluated the account's other
+  models with the app's exact structured-output request. `nvidia/nemotron-3-ultra-550b-a55b`
+  returned valid JSON in 3 s; Mistral Large 4 worked but took 18 s; Nemotron 3.5 Lightning used its
+  whole budget on hidden reasoning; Kimi K2.6 and Nemotron 3 Super aren't enabled for the
+  account (404); gpt-oss-20b and DeepSeek V4.1 Flash timed out.
+- Live end to end through the worker: classification (Refrigeration, 0.99), priority (Critical,
+  0.95), routing, summary, reply draft and the knowledge assistant (which correctly said the
+  knowledge base had no answer instead of inventing one). All valid on the first attempt, 6–25 s each.
+- Fixed: the OpenAI-compatible provider now reports truncation (`finish_reason: length`), refusals
+  (`refusal`, `content_filter`) and empty content precisely, and includes the provider's reason
+  in HTTP errors (e.g. "model reached its end of life"). Reply drafts no longer open with "Dear the
+  customer," when the ticket has no contact (`response-v2`).
+- Known: the assistant lists retrieved sources even when it says they don't answer the question.
+
+## Phase 7 — Integrations, analytics, portal (next)
+
+Integration framework with encrypted credentials, outbound and inbound webhooks with retries
+and logs, SMS/WhatsApp adapter architecture. Analytics reports with date filters and CSV
+export. Customer portal: ticket creation, tracking and feedback.

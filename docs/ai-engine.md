@@ -80,6 +80,18 @@ encrypted at rest. Keys are never serialised to any API response or log.
 | Insights | aggregates (not raw PII) over a period | `insights[{type, title, body, evidence}]` | Dismissable |
 | Knowledge extraction | closed ticket thread | draft article | Requires review before publish |
 
+
+**NVIDIA API catalog** (verified 2026-11-12, all capabilities live): use `openai_compatible`
+with `AI_BASE_URL=https://integrate.api.nvidia.com/v1` and
+`AI_MODEL=nvidia/nemotron-3-ultra-550b-a55b`. It returned valid, schema-conforming JSON on the
+first attempt for every capability, in 6–25 s per call, so set `AI_TIMEOUT_SECONDS=60`.
+Notes from evaluating the catalog:
+- Models are retired (`410 Gone`, e.g. `qwen/qwen3.5-122b-a10b` on 2026-07-20) or not enabled for
+  every account (`404`); both surface as configuration errors with the provider's reason.
+- Reasoning models spend hidden tokens (`reasoning_content`) from the same `max_tokens` budget.
+  A cut-off reply (`finish_reason: length`) or empty content is reported as such; small budgets
+  can starve the answer (`nemotron-3.5-lightning` did at 800 tokens).
+
 ### Smart routing is hybrid
 
 The LLM does not pick the assignee alone. A **deterministic scorer** computes a

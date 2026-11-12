@@ -1,4 +1,4 @@
-import { Bell, Menu, Search } from 'lucide-react'
+import { Menu, Search } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusDot } from '@/components/common/status-indicator'
@@ -13,6 +13,7 @@ import { useUIStore } from '@/stores/ui'
 import { Brand, NavList } from './sidebar'
 import { ThemeMenu } from './theme-menu'
 import { UserMenu } from './user-menu'
+import { NotificationBell } from '@/features/notifications/notification-bell'
 
 function ConnectionBadge() {
   const { data, isError } = useReadiness()
@@ -69,9 +70,7 @@ export function Topbar() {
           </Badge>
         )}
         <ConnectionBadge />
-        <Button variant="ghost" size="icon" aria-label="Notifications" nativeButton={false} render={<Link to="/notifications" />}>
-          <Bell />
-        </Button>
+        <NotificationBell />
         <ThemeMenu />
         <UserMenu />
       </div>
