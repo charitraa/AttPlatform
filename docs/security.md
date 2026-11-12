@@ -102,6 +102,17 @@ convenience; production must expose only the proxy.
 - SSRF protection for user-configured outbound URLs: HTTPS only in prod, block
   private/link-local/loopback ranges after DNS resolution.
 
+Implemented (Phase 7) in `apps/integrations/net.py`, the single egress path for webhooks and
+provider APIs: https only (unless `WEBHOOKS_ALLOW_HTTP`), no credentials in URLs, every resolved
+address must be public (private, loopback, link-local incl. 169.254.169.254, multicast, reserved,
+unspecified, IPv4-mapped IPv6), the socket connects to the **vetted IP** (TLS still verifies the
+hostname) so DNS rebinding can't redirect it, redirects are never followed, response bodies are
+capped at 64 KB. URLs are checked when saved and again on every request. Inbound: HMAC-SHA256
+with a ±5 min window, constant-time compare, 256 KB limit, per-integration throttle, unknown /
+disabled / badly-signed requests get the same 401, idempotent on `(integration, id)`, processed
+asynchronously in a savepoint. Credentials: Fernet (`MultiFernet`, newest key first) via
+`FIELD_ENCRYPTION_KEYS`; production refuses to start without a key.
+
 ## 8. Audit logging
 
 Implemented in `apps.audit`: `AuditLog.save()` refuses updates, the admin is

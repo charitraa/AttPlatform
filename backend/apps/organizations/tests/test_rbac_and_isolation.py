@@ -134,8 +134,9 @@ def test_audit_log_is_append_only(admin):
 # --------------------------------------------------- privilege escalation guards
 def test_admin_changes_member_role(client_for, admin, make_member):
     agent = make_member(admin.organization)
-    response = client_for(admin).patch(reverse("member-detail", args=[agent.user.id]), {"role": "ops_manager"},
-                                       format="json")
+    response = client_for(admin).patch(
+        reverse("member-detail", args=[agent.user.id]), {"role": "ops_manager"}, format="json"
+    )
     assert response.status_code == 200
     assert response.json()["role"]["code"] == "ops_manager"
     log = AuditLog.objects.get(action="membership.role_changed")
@@ -144,8 +145,9 @@ def test_admin_changes_member_role(client_for, admin, make_member):
 
 def test_org_admin_cannot_grant_super_admin(client_for, admin, make_member):
     agent = make_member(admin.organization)
-    response = client_for(admin).patch(reverse("member-detail", args=[agent.user.id]), {"role": "super_admin"},
-                                       format="json")
+    response = client_for(admin).patch(
+        reverse("member-detail", args=[agent.user.id]), {"role": "super_admin"}, format="json"
+    )
     assert response.status_code == 403
 
 
@@ -154,29 +156,36 @@ def test_ops_manager_cannot_grant_higher_role_or_manage_admins(client_for, admin
     agent = make_member(admin.organization)
     # ops managers can view users but lack users.manage entirely
     client = client_for(ops)
-    assert client.patch(reverse("member-detail", args=[agent.user.id]), {"role": "org_admin"},
-                        format="json").status_code == 403
-    assert client.patch(reverse("member-detail", args=[admin.user.id]), {"is_active": False},
-                        format="json").status_code == 403
+    assert (
+        client.patch(reverse("member-detail", args=[agent.user.id]), {"role": "org_admin"}, format="json").status_code
+        == 403
+    )
+    assert (
+        client.patch(reverse("member-detail", args=[admin.user.id]), {"is_active": False}, format="json").status_code
+        == 403
+    )
 
 
 def test_cannot_change_own_role(client_for, admin):
-    response = client_for(admin).patch(reverse("member-detail", args=[admin.user.id]), {"role": "customer"},
-                                       format="json")
+    response = client_for(admin).patch(
+        reverse("member-detail", args=[admin.user.id]), {"role": "customer"}, format="json"
+    )
     assert response.status_code == 400
 
 
 def test_org_admin_cannot_modify_super_admin(client_for, admin, make_member):
     root = make_member(admin.organization, RoleCode.SUPER_ADMIN)
-    response = client_for(admin).patch(reverse("member-detail", args=[root.user.id]), {"is_active": False},
-                                       format="json")
+    response = client_for(admin).patch(
+        reverse("member-detail", args=[root.user.id]), {"is_active": False}, format="json"
+    )
     assert response.status_code == 403
 
 
 def test_admin_can_deactivate_a_co_admin(client_for, admin, make_member):
     co_admin = make_member(admin.organization, RoleCode.ORG_ADMIN)
-    response = client_for(admin).patch(reverse("member-detail", args=[co_admin.user.id]), {"is_active": False},
-                                       format="json")
+    response = client_for(admin).patch(
+        reverse("member-detail", args=[co_admin.user.id]), {"is_active": False}, format="json"
+    )
     assert response.status_code == 200
     assert response.json()["is_active"] is False
 

@@ -474,8 +474,68 @@
   customer," when the ticket has no contact (`response-v2`).
 - Known: the assistant lists retrieved sources even when it says they don't answer the question.
 
-## Phase 7 — Integrations, analytics, portal (next)
+## Phase 7 — Integrations, analytics, portal ✅ (2026-11-12)
 
-Integration framework with encrypted credentials, outbound and inbound webhooks with retries
-and logs, SMS/WhatsApp adapter architecture. Analytics reports with date filters and CSV
-export. Customer portal: ticket creation, tracking and feedback.
+### Completed
+
+**Backend: `apps.integrations`**
+- Registry of connectors (`@register` per `(kind, provider)`): outbound webhooks, inbound webhook
+  (tickets), SMS via Twilio, SMS console (dev log), WhatsApp Business Cloud API (template messages).
+  Each connector declares its settings and secrets so the API validates them and the UI renders the form.
+- Credentials are Fernet-encrypted (`MultiFernet` key rotation) and write-only: responses show
+  `configured` and at most the last 4 characters. Generated signing secrets are shown once. All changes
+  (never values) are audited.
+- Egress guard (`net.py`): public https only, DNS-checked and IP-pinned against rebinding, no
+  redirects, capped responses. Used by every outbound call.
+- Outbound webhooks: ticket, work-order and SLA events → signed envelope with a stable event id →
+  Celery `webhooks` queue; retries at 1 m, 5 m, 30 m, 2 h, 12 h then failed; manual redeliver; a sweep
+  every 5 minutes re-queues retries lost by a broker restart. Internal notes are never sent.
+- Inbound webhook: signed, replay-protected, size-limited, throttled, idempotent. Messages become
+  tickets (matched to the customer contact by email, else an optional default customer), or a reply
+  when they mention a ticket reference: a public reply when the sender has a portal account, an
+  internal note otherwise. Tickets are created on behalf of the admin who set up the integration
+  (checked on every message).
+- Integration logs (summaries only, phone numbers masked), health from last success/error, test connection.
+
+**Backend: analytics and portal**
+- Seven reports (`ticket_volume`, `tickets_by_category`, `agent_performance`, `sla_compliance`,
+  `field_service`, `customer_satisfaction`, `ai_accuracy`) as columns + rows, whole days in the org time
+  zone, up to a year; CSV export with formula neutralisation, UTF-8 BOM, audit entry and throttle.
+- `apps.portal`: customer-only API (own accounts, public replies, customer-worded statuses, no internal
+  fields), create with category/own asset, confirm / reopen with reason, `CustomerFeedback` (1–5, once per
+  person, resolved tickets or completed work orders).
+- Dev email: `EMAIL_REDIRECT_TO` sends all dev mail to one inbox (demo users have made-up addresses).
+
+**Frontend**
+- Integrations: catalog-driven add flow, password inputs for credentials, show-once secret dialog with
+  copy, detail page with settings, enable toggle, test connection, test message, inbound URL + example
+  signed `curl` + rotate, endpoints (events, active, rotate, delete), deliveries with retry now, received
+  messages linked to their tickets, activity log.
+- Analytics: report tabs, date range with presets (in the URL, so links are shareable), formatted tables, CSV export.
+- Customer portal ("My requests"): list by state with search, new request with validation, request page with
+  chat-style conversation, "We need a reply from you", confirm / reopen with reason, star rating. Customers land
+  on it; staff screens are hidden from them (`hiddenFor`). Every navigation item is now implemented (tested).
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest | **310 passed**. New: encryption and key rotation; write-only credentials; validation, permissions and isolation; SSRF (loopback, RFC 1918, link-local/metadata, IPv6 and mapped, 0.0.0.0, DNS answer pointing inside, URL shape); signed delivery to a real local server; internal notes never sent; retry schedule → failed → redeliver with a stable event id; redirects not followed; disabled endpoint; sweep; ping and health; inbound create once, signature/replay/size/unknown, secret rotation, reply by reference (public vs internal), unknown sender, creator losing access; Twilio request shape and masked logs; WhatsApp template rule; console SMS; portal (own tickets only, hidden fields, internal notes hidden, confirm/reopen/rate, feedback rules, staff refused); reports (org-timezone days, agent figures, satisfaction, every report renders, CSV injection and audit, validation and permissions); dev mail redirect |
+| Frontend Vitest | **100 passed**. New: integration add flow (credentials sent, never shown), show-once inbound secret, test connection and retry; analytics report switch and CSV export with dates; portal list by state, validated new request, conversation and reply, confirm, reopen reason, rating; customers' navigation and landing; every nav item implemented |
+| Lint / type-check / build | clean |
+| Live stack | inbound signed message → ticket TCK-000046 via the worker; replay = duplicate; forged = 401; metadata URL refused; report + CSV; portal as the demo customer; real email through Gmail SMTP (redirected) |
+
+### Known gaps carried forward
+- SMS/WhatsApp are wired as connectors (send + test) but not yet as notification channels in
+  preferences; Twilio/WhatsApp were verified by request-shape tests only (no accounts here).
+- Email-to-ticket needs a mailbox bridge (IMAP poller or a provider's inbound-parse) posting to the inbound webhook.
+- `PUBLIC_API_URL` should be set so inbound URLs shown in the UI are reachable from outside (falls back to `FRONTEND_URL`).
+- Webhook delivery holds a row lock during the HTTP call (≤10 s); fine at this scale, revisit with a "sending" state if volume grows.
+- Demo data is still old (SLA compliance 0 % in the demo org); re-date the seed.
+- No visual check in a real browser in this environment.
+
+## Phase 8 — Hardening (next)
+
+Security audit against `security.md`, `check --deploy`, dependency audit; drf-spectacular
+warnings; Nginx `resolver` for container restarts; coverage gaps; end-to-end workflow tests;
+performance (query counts, indexes, caching); production images and deployment guide.

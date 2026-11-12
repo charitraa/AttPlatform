@@ -20,7 +20,7 @@ export function NavList({ collapsed = false, onNavigate }: { collapsed?: boolean
   const user = useAuthStore((s) => s.user)
   // Navigation mirrors permissions for usability; the API enforces access regardless.
   const groups = navigation
-    .map((g) => ({ ...g, items: g.items.filter((i) => hasAnyPermission(user, i.permissions ?? [])) }))
+    .map((g) => ({ ...g, items: g.items.filter((i) => hasAnyPermission(user, i.permissions ?? []) && !(i.hiddenFor && hasAnyPermission(user, i.hiddenFor))) }))
     .filter((g) => g.items.length > 0)
 
   return (

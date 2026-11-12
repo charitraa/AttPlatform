@@ -5,6 +5,7 @@ All configuration is read from environment variables (see `.env.example` at the
 repository root). Environment-specific modules (`dev`, `test`, `prod`) import from
 here and override only what differs.
 """
+
 from datetime import timedelta
 from pathlib import Path
 
@@ -64,6 +65,8 @@ LOCAL_APPS = [
     "apps.field_service",
     "apps.sla",
     "apps.notifications",
+    "apps.integrations",
+    "apps.portal",
 ]
 AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -187,6 +190,8 @@ REST_FRAMEWORK = {
         "session": env("THROTTLE_SESSION", default="60/min"),  # token refresh (every page load)
         "system": env("THROTTLE_SYSTEM", default="120/min"),  # health / meta (polled by the UI)
         "ai": env("THROTTLE_AI", default="30/min"),
+        "inbound_webhook": env("THROTTLE_INBOUND_WEBHOOK", default="120/min"),  # per integration
+        "export": env("THROTTLE_EXPORT", default="20/min"),
     },
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
 }
@@ -275,6 +280,15 @@ AI_AUTO_APPLY_MIN_CONFIDENCE = env.float("AI_AUTO_APPLY_MIN_CONFIDENCE", default
 
 # Symmetric key(s) for encrypting integration credentials at rest (Fernet).
 FIELD_ENCRYPTION_KEYS = env.list("FIELD_ENCRYPTION_KEYS", default=[])
+
+# ------------------------------------------------------------- integrations
+# Outbound webhook URLs must be https unless this is on (dev/test only). Private,
+# loopback and link-local addresses are always refused after DNS resolution.
+WEBHOOKS_ALLOW_HTTP = env.bool("WEBHOOKS_ALLOW_HTTP", default=False)
+# Public base URL of the API (as external systems reach it), used to show inbound webhook URLs.
+PUBLIC_API_URL = env("PUBLIC_API_URL", default="")
+WEBHOOK_TIMEOUT_SECONDS = env.float("WEBHOOK_TIMEOUT_SECONDS", default=10.0)
+INBOUND_WEBHOOK_MAX_BYTES = env.int("INBOUND_WEBHOOK_MAX_BYTES", default=256 * 1024)
 
 # ---------------------------------------------------------------------- logging
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")

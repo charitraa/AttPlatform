@@ -91,8 +91,14 @@ class RefreshView(UnauthenticatedView):
             access, new_refresh = services.rotate_refresh(raw)
         except exceptions.AuthenticationFailed:
             response = Response(
-                {"error": {"code": "session_expired", "message": "Your session has expired. Please sign in again.",
-                           "details": None, "request_id": get_request_id()}},
+                {
+                    "error": {
+                        "code": "session_expired",
+                        "message": "Your session has expired. Please sign in again.",
+                        "details": None,
+                        "request_id": get_request_id(),
+                    }
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
             clear_refresh_cookie(response)
@@ -104,7 +110,6 @@ class RefreshView(UnauthenticatedView):
 
 @extend_schema(tags=["auth"])
 class LogoutView(UnauthenticatedView):
-
     @extend_schema(request=None, responses={204: None})
     def post(self, request):
         services.revoke_refresh(get_refresh_cookie(request))

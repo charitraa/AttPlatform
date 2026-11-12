@@ -5,6 +5,7 @@ Every error response uses the same envelope:
 
     {"error": {"code": str, "message": str, "details": any, "request_id": str}}
 """
+
 import logging
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied

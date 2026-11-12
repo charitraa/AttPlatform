@@ -1,4 +1,5 @@
 """Write audit records. Call from services, never from serializers or views directly."""
+
 import logging
 
 from apps.core.context import get_request_id

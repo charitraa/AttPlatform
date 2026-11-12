@@ -1,4 +1,5 @@
 """Production settings. Fails fast on insecure configuration."""
+
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
@@ -8,6 +9,9 @@ DEBUG = False
 
 if len(SECRET_KEY) < 50 or SECRET_KEY.startswith("change-me"):
     raise ImproperlyConfigured("DJANGO_SECRET_KEY must be a strong, unique value in production.")
+
+if not [k for k in FIELD_ENCRYPTION_KEYS if k.strip()]:  # noqa: F405
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEYS must be set in production (integration secrets).")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)

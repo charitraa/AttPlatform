@@ -1,4 +1,5 @@
 """Test settings: deterministic, fast, isolated from external services."""
+
 from .base import *  # noqa: F403
 from .base import REST_FRAMEWORK, SIMPLE_JWT
 
@@ -29,3 +30,8 @@ AI_RETRY_BACKOFF_SECONDS = 0
 
 # Throttling is disabled globally in tests; throttle tests opt in explicitly.
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
+
+# Fixed test-only Fernet keys (newest first) so credential encryption is exercised.
+FIELD_ENCRYPTION_KEYS = ["9cD8L1q8cGVZ9n0w0yE1o0iQm2l5x8yQv4o3P6m1xYc=", "R0tLlV3z2vS3m4y7aQ1b6c8d0e2f4g6h8i0j2k4m6n8="]
+# Outbound webhooks may target plain http in tests (the SSRF guard still blocks private ranges).
+WEBHOOKS_ALLOW_HTTP = True

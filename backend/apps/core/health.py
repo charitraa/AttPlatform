@@ -1,4 +1,5 @@
 """Dependency checks used by the readiness endpoint."""
+
 import logging
 import time
 

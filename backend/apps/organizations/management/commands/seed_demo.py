@@ -6,6 +6,7 @@ Create demo organizations and one user per role for local development.
 Idempotent: re-running updates roles/passwords instead of duplicating rows.
 Refuses to run when ENVIRONMENT=production.
 """
+
 import os
 
 from django.conf import settings
@@ -21,7 +22,9 @@ User = get_user_model()
 
 DEMO_ORGS = [
     {
-        "name": "Acme Facilities", "slug": "acme", "timezone": "Asia/Kathmandu",
+        "name": "Acme Facilities",
+        "slug": "acme",
+        "timezone": "Asia/Kathmandu",
         "users": [
             ("superadmin@att.local", "Sam", "Root", RoleCode.SUPER_ADMIN),
             ("admin@acme.test", "Alice", "Admin", RoleCode.ORG_ADMIN),
@@ -33,7 +36,9 @@ DEMO_ORGS = [
     },
     {
         # A second tenant, useful for checking organization isolation by hand.
-        "name": "Globex Services", "slug": "globex", "timezone": "UTC",
+        "name": "Globex Services",
+        "slug": "globex",
+        "timezone": "UTC",
         "users": [("admin@globex.test", "Gina", "Globex", RoleCode.ORG_ADMIN)],
     },
 ]

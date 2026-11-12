@@ -14,6 +14,7 @@ never observe uncommitted rows.
 
     events.publish("ticket.created", organization_id=org.id, ticket_id=str(ticket.id))
 """
+
 from __future__ import annotations
 
 import logging

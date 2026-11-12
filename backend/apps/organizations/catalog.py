@@ -8,6 +8,7 @@ Code checks permissions by code string, e.g. `HasPermission("users.manage")`.
 Permissions for modules delivered in later phases are declared now so role
 definitions stay stable as features land.
 """
+
 from dataclasses import dataclass
 
 
@@ -83,51 +84,102 @@ def _perms(*codes: str) -> frozenset[str]:
 
 
 _STAFF_COMMON = (
-    "organization.view", "roles.view", "knowledge.view", "customers.view", "assets.view",
-    "technicians.view", "schedule.view", "sla.view",
+    "organization.view",
+    "roles.view",
+    "knowledge.view",
+    "customers.view",
+    "assets.view",
+    "technicians.view",
+    "schedule.view",
+    "sla.view",
 )
 
 SYSTEM_ROLES: dict[str, RoleDefinition] = {
     r.code: r
     for r in (
         RoleDefinition(
-            RoleCode.SUPER_ADMIN, "Super Admin", "Platform operator with every permission.", 100,
+            RoleCode.SUPER_ADMIN,
+            "Super Admin",
+            "Platform operator with every permission.",
+            100,
             frozenset(PERMISSIONS),
         ),
         RoleDefinition(
-            RoleCode.ORG_ADMIN, "Organization Admin", "Manages the organization, its users and configuration.", 80,
-            frozenset(PERMISSIONS) - {"portal.access", "feedback.submit", "work_orders.view_own", "tickets.view_own",
-                                      "work_orders.execute"},
+            RoleCode.ORG_ADMIN,
+            "Organization Admin",
+            "Manages the organization, its users and configuration.",
+            80,
+            frozenset(PERMISSIONS)
+            - {"portal.access", "feedback.submit", "work_orders.view_own", "tickets.view_own", "work_orders.execute"},
         ),
         RoleDefinition(
-            RoleCode.OPS_MANAGER, "Operations Manager", "Runs service operations, dispatch and SLAs.", 60,
+            RoleCode.OPS_MANAGER,
+            "Operations Manager",
+            "Runs service operations, dispatch and SLAs.",
+            60,
             _perms(
-                *_STAFF_COMMON, "users.view", "audit.view",
-                "tickets.view_all", "tickets.create", "tickets.update", "tickets.assign", "tickets.archive",
-                "tickets.internal_notes", "customers.manage", "assets.manage",
-                "ai.use", "ai.override", "knowledge.manage",
-                "technicians.manage", "work_orders.view_all", "work_orders.manage", "location.view",
-                "sla.manage", "analytics.view",
+                *_STAFF_COMMON,
+                "users.view",
+                "audit.view",
+                "tickets.view_all",
+                "tickets.create",
+                "tickets.update",
+                "tickets.assign",
+                "tickets.archive",
+                "tickets.internal_notes",
+                "customers.manage",
+                "assets.manage",
+                "ai.use",
+                "ai.override",
+                "knowledge.manage",
+                "technicians.manage",
+                "work_orders.view_all",
+                "work_orders.manage",
+                "location.view",
+                "sla.manage",
+                "analytics.view",
             ),
         ),
         RoleDefinition(
-            RoleCode.SUPPORT_AGENT, "Support Agent", "Handles tickets and customer communication.", 40,
+            RoleCode.SUPPORT_AGENT,
+            "Support Agent",
+            "Handles tickets and customer communication.",
+            40,
             _perms(
-                *_STAFF_COMMON, "users.view",
-                "tickets.view_all", "tickets.create", "tickets.update", "tickets.internal_notes",
-                "customers.manage", "ai.use", "work_orders.view_all",
+                *_STAFF_COMMON,
+                "users.view",
+                "tickets.view_all",
+                "tickets.create",
+                "tickets.update",
+                "tickets.internal_notes",
+                "customers.manage",
+                "ai.use",
+                "work_orders.view_all",
             ),
         ),
         RoleDefinition(
-            RoleCode.FIELD_TECHNICIAN, "Field Technician", "Performs on-site work orders.", 30,
+            RoleCode.FIELD_TECHNICIAN,
+            "Field Technician",
+            "Performs on-site work orders.",
+            30,
             _perms(
-                "organization.view", "knowledge.view", "customers.view", "assets.view", "schedule.view",
-                "tickets.view_own", "tickets.internal_notes", "ai.use",
-                "work_orders.view_own", "work_orders.execute",
+                "organization.view",
+                "knowledge.view",
+                "customers.view",
+                "assets.view",
+                "schedule.view",
+                "tickets.view_own",
+                "tickets.internal_notes",
+                "ai.use",
+                "work_orders.view_own",
+                "work_orders.execute",
             ),
         ),
         RoleDefinition(
-            RoleCode.CUSTOMER, "Customer", "Customer contact using the self-service portal.", 10,
+            RoleCode.CUSTOMER,
+            "Customer",
+            "Customer contact using the self-service portal.",
+            10,
             _perms("organization.view", "portal.access", "tickets.view_own", "tickets.create", "feedback.submit"),
         ),
     )

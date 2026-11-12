@@ -1,4 +1,5 @@
 """Abstract base models shared by every domain app."""
+
 import uuid
 
 from django.db import models

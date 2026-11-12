@@ -207,7 +207,8 @@ def test_password_reset_rejects_tampered_token(api_client, admin):
 
     uid = urlsafe_base64_encode(force_bytes(admin.user.pk))
     response = api_client.post(
-        reverse("auth-password-reset"), {"uid": uid, "token": "bogus-token", "new_password": "Brand-New-Pass-7"},
+        reverse("auth-password-reset"),
+        {"uid": uid, "token": "bogus-token", "new_password": "Brand-New-Pass-7"},
         format="json",
     )
     assert response.status_code == 400
@@ -222,8 +223,11 @@ def test_registration_disabled_by_default(api_client):
 def test_registration_creates_org_and_admin_when_enabled(api_client, settings):
     settings.REGISTRATION_ENABLED = True
     payload = {
-        "organization_name": "New Co", "first_name": "Nia", "last_name": "New",
-        "email": "nia@newco.test", "password": "Sufficiently-Long-1",
+        "organization_name": "New Co",
+        "first_name": "Nia",
+        "last_name": "New",
+        "email": "nia@newco.test",
+        "password": "Sufficiently-Long-1",
     }
     response = api_client.post(reverse("auth-register"), payload, format="json")
     assert response.status_code == 201

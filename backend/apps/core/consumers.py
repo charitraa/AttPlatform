@@ -3,6 +3,7 @@
 Authenticated, organization-scoped event consumers arrive in Phase 2/6
 (`/ws/events/`). This one carries no tenant data.
 """
+
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.conf import settings
 

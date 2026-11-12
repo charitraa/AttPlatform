@@ -1,4 +1,5 @@
 """Write-side business logic for organizations, memberships, roles and invitations."""
+
 import hashlib
 import secrets
 from datetime import timedelta
@@ -104,8 +105,9 @@ def unique_slug(name: str) -> str:
 
 
 @transaction.atomic
-def register_organization(*, organization_name: str, email: str, password: str, first_name: str, last_name: str,
-                          request=None):
+def register_organization(
+    *, organization_name: str, email: str, password: str, first_name: str, last_name: str, request=None
+):
     """Self-service sign-up: creates an organization and its first Organization Admin."""
     email = email.strip().lower()
     if User.objects.filter(email__iexact=email).exists():
@@ -139,8 +141,9 @@ def update_organization(*, organization: Organization, data: dict, request) -> O
 
 # --------------------------------------------------------------------- memberships
 @transaction.atomic
-def change_member(*, actor: Membership, target: Membership, role_code: str | None = None,
-                  is_active: bool | None = None, request=None) -> Membership:
+def change_member(
+    *, actor: Membership, target: Membership, role_code: str | None = None, is_active: bool | None = None, request=None
+) -> Membership:
     target = Membership.objects.select_for_update().select_related("role", "user").get(pk=target.pk)
     _ensure_can_manage(actor, target)
     changes = {}
@@ -148,7 +151,8 @@ def change_member(*, actor: Membership, target: Membership, role_code: str | Non
     if role_code is not None and role_code != target.role.code:
         _ensure_can_grant(actor, role_code)
         if target.role.code in (RoleCode.ORG_ADMIN, RoleCode.SUPER_ADMIN) and role_code not in (
-            RoleCode.ORG_ADMIN, RoleCode.SUPER_ADMIN
+            RoleCode.ORG_ADMIN,
+            RoleCode.SUPER_ADMIN,
         ):
             _ensure_admin_remains(target.organization, excluding=target)
         changes["role"] = {"from": target.role.code, "to": role_code}
@@ -200,8 +204,9 @@ def create_invitation(*, actor: Membership, email: str, role_code: str, request=
     _ensure_can_grant(actor, role_code)
     if Membership.objects.filter(organization=organization, user__email__iexact=email).exists():
         raise Conflict("This person is already a member of the organization.")
-    if Invitation.objects.filter(organization=organization, email=email,
-                                 accepted_at__isnull=True, revoked_at__isnull=True).exists():
+    if Invitation.objects.filter(
+        organization=organization, email=email, accepted_at__isnull=True, revoked_at__isnull=True
+    ).exists():
         raise Conflict("An invitation for this email is already open. Resend or revoke it instead.")
 
     token = secrets.token_urlsafe(32)
@@ -262,8 +267,9 @@ def accept_invitation(*, token: str, password: str, first_name: str = "", last_n
 
     user = User.objects.filter(email__iexact=invitation.email).first()
     if user is None:
-        user = User(email=invitation.email, first_name=first_name, last_name=last_name,
-                    email_verified_at=timezone.now())
+        user = User(
+            email=invitation.email, first_name=first_name, last_name=last_name, email_verified_at=timezone.now()
+        )
         validate_password(password, user)
         user.set_password(password)
         user.save()
@@ -272,15 +278,17 @@ def accept_invitation(*, token: str, password: str, first_name: str = "", last_n
         raise exceptions.ValidationError({"password": ["Enter the current password for your existing account."]})
 
     membership, created = Membership.objects.get_or_create(
-        user=user, organization=invitation.organization,
+        user=user,
+        organization=invitation.organization,
         defaults={"role": invitation.role, "invited_by": invitation.invited_by},
     )
     if not created:
         raise Conflict("You are already a member of this organization.")
     invitation.accepted_at = timezone.now()
     invitation.save(update_fields=["accepted_at", "updated_at"])
-    audit.record("invitation.accepted", request=request, actor=user, organization=invitation.organization,
-                 target=invitation)
+    audit.record(
+        "invitation.accepted", request=request, actor=user, organization=invitation.organization, target=invitation
+    )
     return user, membership
 
 

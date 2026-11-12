@@ -78,9 +78,11 @@ def test_clients_behind_proxy_get_separate_throttle_buckets(api_client, settings
     from rest_framework.settings import api_settings
     from rest_framework.throttling import ScopedRateThrottle
 
-    settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "NUM_PROXIES": 1,
-                               "DEFAULT_THROTTLE_RATES": {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"],
-                                                          "system": "2/min"}}
+    settings.REST_FRAMEWORK = {
+        **settings.REST_FRAMEWORK,
+        "NUM_PROXIES": 1,
+        "DEFAULT_THROTTLE_RATES": {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], "system": "2/min"},
+    }
     api_settings.reload()
     ScopedRateThrottle.THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
     cache.clear()

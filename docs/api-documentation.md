@@ -211,12 +211,46 @@ affects the ticket; the analysis carries a readable `error`. Every analysis reco
 Ticket list/detail responses include `sla` (compact status) for people with `sla.view`.
 WebSocket: `/ws/events/`, authenticated by the first message (see architecture §4.2).
 
-### Integrations, analytics, portal (Phase 5/7)
-`/assets/{id}/service-records/`, `/integrations/`,
-`/integrations/{id}/test/`, `/integrations/{id}/logs/`,
-`/webhooks/inbound/{integration_id}/` (signature-verified, unauthenticated),
-`/analytics/{report}/?from=&to=&format=csv`,
-`/portal/tickets/`, `/portal/tickets/{id}/comments/`, `/portal/feedback/`.
+### Integrations (Phase 7) — `integrations.manage`
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/integrations/catalog/` | Connectors (settings, secrets, generated secrets, `can_send`) and outbound event types. |
+| GET/POST | `/integrations/` | `secrets` is write-only; responses carry `credentials: {name: {configured, hint}}` (hint = last 4 chars at most). Creating an inbound integration returns `generated_secrets.signing_secret` **once**. |
+| GET/PATCH/DELETE | `/integrations/{id}/` | Kind/provider are fixed. An empty secret value means "unchanged". |
+| POST | `/integrations/{id}/test/` | `{ok, message}`; webhooks ping every active endpoint. |
+| POST | `/integrations/{id}/send-test/` | SMS/WhatsApp: `{to (E.164), text \| template, variables}`. Numbers are masked in logs. |
+| POST | `/integrations/{id}/rotate-secret/` | Inbound: new signing secret, shown once; the old one stops working. |
+| GET/POST | `/integrations/{id}/endpoints/` | Outbound endpoints `{url, events[], description}`; URL must be public https. Creation returns `signing_secret` once. |
+| PATCH/DELETE | `/webhook-endpoints/{id}/`, POST `/webhook-endpoints/{id}/rotate-secret/` | |
+| GET | `/integrations/{id}/deliveries/?status=` · POST `/webhook-deliveries/{id}/redeliver/` | Attempts, response code, next retry. |
+| GET | `/integrations/{id}/inbound-events/`, `/integrations/{id}/logs/` | |
+| POST | `/webhooks/inbound/{integration_id}/` | **Unauthenticated**, signed (`X-ATT-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "t.body")>`, ±5 min). JSON `{id, from: {email, name}, subject, body}`. `202` new / `200 duplicate: true` / `401` (unknown, disabled or bad signature — same answer) / `413`. |
+
+Outbound deliveries are POSTed with `X-ATT-Signature`, `X-ATT-Event`, `X-ATT-Event-Id`
+(stable across retries — dedupe on it) and `X-ATT-Attempt`. Body:
+`{id, type, created_at, organization_id, data: {ticket | work_order, old_status?, new_status?, metric?}}`.
+Internal notes are never sent.
+
+### Analytics (Phase 7) — `analytics.view`
+
+`GET /analytics/reports/` lists reports; `GET /analytics/reports/{name}/?start=YYYY-MM-DD&end=YYYY-MM-DD`
+returns `{columns: [{key, label, kind}], rows: [...]}` (whole days in the organization's time zone,
+max 366 days). Add `&export=csv` for a CSV download (audited as `analytics.exported`; cells that a
+spreadsheet would run as formulas are prefixed with `'`). Reports: `ticket_volume`,
+`tickets_by_category`, `agent_performance`, `sla_compliance`, `field_service`,
+`customer_satisfaction`, `ai_accuracy`. (`?export=` rather than `?format=`, which DRF reserves.)
+
+### Customer portal (Phase 7) — `portal.access`
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET/POST | `/portal/tickets/?state=open\|done&search=` | Own customer account(s) only. Customer-facing fields only (no agent emails, SLA, tags, AI). |
+| GET | `/portal/tickets/{id}/` | `status_label` in customer terms ("Waiting for your reply"), `actions: {reply, confirm, reopen, rate}`. |
+| GET/POST | `/portal/tickets/{id}/comments/` | Public replies only. |
+| POST | `/portal/tickets/{id}/confirm/`, `/portal/tickets/{id}/reopen/` | Reopen requires `note`. |
+| GET | `/portal/options/` | Active categories and the customer's own assets. |
+| POST | `/portal/feedback/` | `{ticket \| work_order, rating 1–5, comment}` once per person; ticket must be resolved/closed, work order completed. |
 
 ## 3. Asynchronous operations
 

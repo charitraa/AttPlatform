@@ -3,6 +3,7 @@ The refresh token lives in an HttpOnly cookie scoped to the auth endpoints, so
 page scripts (and any XSS) cannot read it. The short-lived access token is
 returned in the JSON body and kept in memory by the SPA.
 """
+
 from django.conf import settings
 
 

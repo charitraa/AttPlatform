@@ -1,4 +1,5 @@
 """Authentication, session (token) management and password flows."""
+
 import logging
 
 from django.conf import settings
@@ -52,16 +53,16 @@ def rotate_refresh(raw_refresh: str) -> tuple[str, str]:
     try:
         serializer.is_valid(raise_exception=True)
     except (TokenError, exceptions.ValidationError, exceptions.AuthenticationFailed, User.DoesNotExist) as exc:
-        raise exceptions.AuthenticationFailed("Your session has expired. Please sign in again.",
-                                              code="session_expired") from exc
+        raise exceptions.AuthenticationFailed(
+            "Your session has expired. Please sign in again.", code="session_expired"
+        ) from exc
     data = serializer.validated_data
     # Refuse refresh for users who were deactivated or lost every membership since login.
     user_id = RefreshToken(data["refresh"]).payload.get(settings.SIMPLE_JWT.get("USER_ID_CLAIM", "user_id"))
     user = User.objects.filter(pk=user_id, is_active=True).first()
     if user is None or not active_memberships(user).exists():
         revoke_refresh(data["refresh"])
-        raise exceptions.AuthenticationFailed("Your session has expired. Please sign in again.",
-                                              code="session_expired")
+        raise exceptions.AuthenticationFailed("Your session has expired. Please sign in again.", code="session_expired")
     return data["access"], data["refresh"]
 
 
@@ -76,9 +77,7 @@ def revoke_refresh(raw_refresh: str | None) -> None:
 
 def revoke_all_refresh_tokens(user) -> int:
     tokens = OutstandingToken.objects.filter(user=user).exclude(blacklistedtoken__isnull=False)
-    created = BlacklistedToken.objects.bulk_create(
-        [BlacklistedToken(token=t) for t in tokens], ignore_conflicts=True
-    )
+    created = BlacklistedToken.objects.bulk_create([BlacklistedToken(token=t) for t in tokens], ignore_conflicts=True)
     return len(created)
 
 
@@ -117,8 +116,9 @@ def reset_password(*, uid: str, token: str, new_password: str, request=None) -> 
     user = _user_from_uid(uid)
     # The token embeds the password hash and last_login, so it is single-use.
     if user is None or not default_token_generator.check_token(user, token):
-        raise exceptions.ValidationError({"token": ["This reset link is invalid or has expired."]},
-                                         code="invalid_reset_token")
+        raise exceptions.ValidationError(
+            {"token": ["This reset link is invalid or has expired."]}, code="invalid_reset_token"
+        )
     validate_password(new_password, user)
     user.set_password(new_password)
     user.save(update_fields=["password", "updated_at"])

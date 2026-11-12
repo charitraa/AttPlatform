@@ -6,6 +6,7 @@ memberships. Clients with several memberships may send `X-Organization: <slug>`
 to choose one; the slug is only honoured if the user has an active membership
 there. Organization IDs in request bodies are never trusted.
 """
+
 from dataclasses import dataclass, field
 
 from rest_framework import exceptions

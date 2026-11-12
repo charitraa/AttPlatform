@@ -19,8 +19,9 @@ def invite(client_for, admin, django_capture_on_commit_callbacks):
 
     def _invite(email="new.hire@acme.test", role="support_agent", actor=None):
         with django_capture_on_commit_callbacks(execute=True):
-            response = client_for(actor or admin).post(reverse("invitation-list"), {"email": email, "role": role},
-                                                       format="json")
+            response = client_for(actor or admin).post(
+                reverse("invitation-list"), {"email": email, "role": role}, format="json"
+            )
         token = None
         if response.status_code == 201:
             match = re.search(r"accept-invite\?token=(\S+)", mail.outbox[-1].body)
@@ -31,9 +32,11 @@ def invite(client_for, admin, django_capture_on_commit_callbacks):
 
 
 def accept(client, token, password="Fresh-Hire-Pass-1", **extra):
-    return client.post(reverse("auth-invitation-accept"),
-                       {"token": token, "password": password, "first_name": "New", "last_name": "Hire", **extra},
-                       format="json")
+    return client.post(
+        reverse("auth-invitation-accept"),
+        {"token": token, "password": password, "first_name": "New", "last_name": "Hire", **extra},
+        format="json",
+    )
 
 
 def test_invitation_is_emailed_and_token_stored_hashed(invite):
@@ -49,8 +52,12 @@ def test_invitation_is_emailed_and_token_stored_hashed(invite):
 def test_preview_then_accept_creates_user_membership_and_session(api_client, invite, admin):
     _, token = invite()
     preview = api_client.post(reverse("auth-invitation-preview"), {"token": token}, format="json").json()
-    assert preview == {"organization_name": "Acme", "email": "new.hire@acme.test", "role_name": "Support Agent",
-                       "existing_account": False}
+    assert preview == {
+        "organization_name": "Acme",
+        "email": "new.hire@acme.test",
+        "role_name": "Support Agent",
+        "existing_account": False,
+    }
 
     response = accept(api_client, token)
     assert response.status_code == 201

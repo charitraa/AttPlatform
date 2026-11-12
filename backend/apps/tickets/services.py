@@ -5,7 +5,6 @@ Write-side ticket logic. Every mutation:
   * publishes a domain event for other modules (AI, SLA, notifications) on commit.
 """
 
-
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import exceptions
@@ -27,6 +26,7 @@ from .selectors import can_see_internal, customer_ids_for_user, is_staff_actor
 AGENT_ROLES = frozenset({RoleCode.SUPPORT_AGENT, RoleCode.OPS_MANAGER, RoleCode.ORG_ADMIN, RoleCode.SUPER_ADMIN})
 TECHNICIAN_ROLES = frozenset({RoleCode.FIELD_TECHNICIAN})
 UNSET = object()  # "leave this assignee unchanged"
+
 
 # ------------------------------------------------------------------------ helpers
 def _history(ticket, actor, event, *, field="", old=None, new=None, internal=False, actor_type=None):
@@ -291,13 +291,28 @@ def assign_ticket(
     source: str = TicketAssignment.Source.MANUAL,
     request=None,
 ) -> Ticket:
-    return assign(organization=tenant.organization, actor=tenant.membership.user, ticket=ticket, agent_id=agent_id,
-                  technician_id=technician_id, source=source, request=request)
+    return assign(
+        organization=tenant.organization,
+        actor=tenant.membership.user,
+        ticket=ticket,
+        agent_id=agent_id,
+        technician_id=technician_id,
+        source=source,
+        request=request,
+    )
 
 
 @transaction.atomic
-def assign(*, organization, actor, ticket: Ticket, agent_id=UNSET, technician_id=UNSET,
-           source: str = TicketAssignment.Source.MANUAL, request=None) -> Ticket:
+def assign(
+    *,
+    organization,
+    actor,
+    ticket: Ticket,
+    agent_id=UNSET,
+    technician_id=UNSET,
+    source: str = TicketAssignment.Source.MANUAL,
+    request=None,
+) -> Ticket:
     """Assignment core. `actor` may be None for policy-driven automatic (AI) assignment."""
     ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
     org = organization
@@ -342,7 +357,12 @@ def assign(*, organization, actor, ticket: Ticket, agent_id=UNSET, technician_id
         ticket.status = TicketStatus.ASSIGNED
     ticket.save()
     audit.record(
-        "ticket.assigned", request=request, actor=actor, organization=org, target=ticket, changes=changed,
+        "ticket.assigned",
+        request=request,
+        actor=actor,
+        organization=org,
+        target=ticket,
+        changes=changed,
         actor_type="ai" if source == TicketAssignment.Source.AI_AUTO else None,
     )
     _publish(
@@ -493,7 +513,11 @@ def apply_field_change(*, ticket: Ticket, field: str, value, actor=None, request
     actor_type = None if actor else TicketHistory.ActorType.AI
     _history(ticket, actor, "field_changed", field=field, old=_display(old), new=_display(value), actor_type=actor_type)
     audit.record(
-        "ticket.ai_change_applied", request=request, actor=actor, organization=ticket.organization, target=ticket,
+        "ticket.ai_change_applied",
+        request=request,
+        actor=actor,
+        organization=ticket.organization,
+        target=ticket,
         actor_type="user" if actor else "ai",
         changes={field: {"from": _display(old), "to": _display(value)}, "reason": reason[:300]},
     )

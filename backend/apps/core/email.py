@@ -1,4 +1,5 @@
 """Transactional email. Sending happens in a Celery task after the DB commit."""
+
 from django.db import transaction
 
 

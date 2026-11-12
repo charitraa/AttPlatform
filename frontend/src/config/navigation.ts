@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity, BarChart3, Boxes, Building2, CalendarDays, ClipboardList, Gauge, Plug, Sparkles,
-  Ticket, Timer, Users, UserCog, Wrench, BrainCircuit, Bell, Smartphone,
+  Ticket, Timer, Users, UserCog, Wrench, BrainCircuit, Bell, Smartphone, LifeBuoy,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -14,6 +14,8 @@ export interface NavItem {
   summary: string
   /** Visible / accessible when the user has ANY of these permissions (empty = every signed-in user). */
   permissions?: string[]
+  /** Hidden when the user has ANY of these (e.g. staff screens for customer-portal users). */
+  hiddenFor?: string[]
 }
 
 export interface NavGroup {
@@ -23,16 +25,22 @@ export interface NavGroup {
 
 export const navigation: NavGroup[] = [
   {
+    label: 'Support',
+    items: [
+      { label: 'My requests', to: '/portal', icon: LifeBuoy, phase: 7, summary: 'Raise requests, follow progress and reply to the support team.', permissions: ['portal.access'] },
+    ],
+  },
+  {
     label: 'Overview',
     items: [
-      { label: 'Dashboard', to: '/', icon: Gauge, phase: 3, summary: 'Ticket, SLA and technician KPIs computed by the backend.', permissions: ['tickets.view_all', 'tickets.view_own'] },
+      { label: 'Dashboard', to: '/', icon: Gauge, phase: 3, summary: 'Ticket, SLA and technician KPIs computed by the backend.', permissions: ['tickets.view_all', 'tickets.view_own'], hiddenFor: ['portal.access'] },
       { label: 'Analytics', to: '/analytics', icon: BarChart3, phase: 7, summary: 'Performance, SLA compliance and AI accuracy reports with CSV export.', permissions: ['analytics.view'] },
     ],
   },
   {
     label: 'Service desk',
     items: [
-      { label: 'Tickets', to: '/tickets', icon: Ticket, phase: 3, summary: 'Ticket lifecycle, assignment, comments, attachments and audit trail.', permissions: ['tickets.view_all', 'tickets.view_own'] },
+      { label: 'Tickets', to: '/tickets', icon: Ticket, phase: 3, summary: 'Ticket lifecycle, assignment, comments, attachments and audit trail.', permissions: ['tickets.view_all', 'tickets.view_own'], hiddenFor: ['portal.access'] },
       { label: 'Customers', to: '/customers', icon: Building2, phase: 3, summary: 'Customer accounts, contacts, ticket and service history.', permissions: ['customers.view'] },
       { label: 'Assets', to: '/assets', icon: Boxes, phase: 3, summary: 'Registered assets, warranties and maintenance history.', permissions: ['assets.view'] },
       { label: 'SLA', to: '/sla', icon: Timer, phase: 6, summary: 'SLA policies, business hours, breach detection and escalation.', permissions: ['sla.view'] },
@@ -61,7 +69,7 @@ export const navigation: NavGroup[] = [
       { label: 'Integrations', to: '/integrations', icon: Plug, phase: 7, summary: 'Email, SMS, WhatsApp, webhooks and external systems.', permissions: ['integrations.manage'] },
       { label: 'Users', to: '/settings/users', icon: Users, phase: 2, summary: 'Users, roles and invitations.', permissions: ['users.view'] },
       { label: 'Organization', to: '/settings/organization', icon: UserCog, phase: 2, summary: 'Organization profile and platform settings.', permissions: ['organization.view'] },
-      { label: 'System status', to: '/system', icon: Activity, phase: 1, summary: 'Live health of the API, database, Redis and WebSocket.' },
+      { label: 'System status', to: '/system', icon: Activity, phase: 1, summary: 'Live health of the API, database, Redis and WebSocket.', hiddenFor: ['portal.access'] },
     ],
   },
 ]

@@ -130,8 +130,9 @@ class InvitationFilter(filters.FilterSet):
 
 
 @extend_schema(tags=["organization"])
-class InvitationViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin,
-                        viewsets.GenericViewSet):
+class InvitationViewSet(
+    mixins.ListModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet
+):
     permission_classes = [HasPermission("invitations.manage")]
     serializer_class = InvitationSerializer
     filterset_class = InvitationFilter
@@ -145,7 +146,9 @@ class InvitationViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, mixins.D
         s = InvitationCreateSerializer(data=request.data)
         s.is_valid(raise_exception=True)
         invitation = services.create_invitation(
-            actor=request.membership, email=s.validated_data["email"], role_code=s.validated_data["role"],
+            actor=request.membership,
+            email=s.validated_data["email"],
+            role_code=s.validated_data["role"],
             request=request,
         )
         return Response(InvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
@@ -182,4 +185,3 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return AuditLog.objects.filter(organization=self.request.organization).select_related("actor")
-

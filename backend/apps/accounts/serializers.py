@@ -108,8 +108,20 @@ def build_me(user, membership: Membership | None = None) -> dict:
         raise ValueError("User has no active membership.")
     return MeSerializer(
         {
-            **{f: getattr(user, f) for f in ("id", "email", "first_name", "last_name", "full_name", "phone",
-                                              "timezone", "date_joined", "last_login")},
+            **{
+                f: getattr(user, f)
+                for f in (
+                    "id",
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "full_name",
+                    "phone",
+                    "timezone",
+                    "date_joined",
+                    "last_login",
+                )
+            },
             "organization": membership.organization,
             "role": membership.role,
             "permissions": sorted(permissions_for(membership)),

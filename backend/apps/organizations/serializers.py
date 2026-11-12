@@ -32,7 +32,10 @@ class OrganizationSettingsSerializer(serializers.Serializer):
 
 
 ORGANIZATION_SETTING_DEFAULTS = {
-    "routing_policy": "recommend", "ai_enabled": True, "ai_auto_triage": False, "ticket_auto_close_days": 7,
+    "routing_policy": "recommend",
+    "ai_enabled": True,
+    "ai_auto_triage": False,
+    "ticket_auto_close_days": 7,
 }
 
 
@@ -115,7 +118,15 @@ class InvitationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invitation
         fields = (
-            "id", "email", "role", "status", "expires_at", "accepted_at", "revoked_at", "invited_by", "created_at",
+            "id",
+            "email",
+            "role",
+            "status",
+            "expires_at",
+            "accepted_at",
+            "revoked_at",
+            "invited_by",
+            "created_at",
         )
 
     def get_role(self, obj) -> dict:
@@ -135,8 +146,18 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AuditLog
-        fields = ("id", "action", "actor", "actor_type", "target_type", "target_id", "changes", "ip_address",
-                  "request_id", "created_at")
+        fields = (
+            "id",
+            "action",
+            "actor",
+            "actor_type",
+            "target_type",
+            "target_id",
+            "changes",
+            "ip_address",
+            "request_id",
+            "created_at",
+        )
 
     def get_actor(self, obj) -> dict | None:
         return {"id": str(obj.actor.id), "email": obj.actor.email} if obj.actor else None

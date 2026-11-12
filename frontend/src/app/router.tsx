@@ -22,7 +22,6 @@ const OrganizationSettingsPage = named(() => import('@/features/settings/organiz
 const TicketsPage = named(() => import('@/features/tickets/tickets-page'), 'TicketsPage')
 const CreateTicketPage = named(() => import('@/features/tickets/create-ticket-page'), 'CreateTicketPage')
 const TicketDetailPage = named(() => import('@/features/tickets/ticket-detail-page'), 'TicketDetailPage')
-const DashboardPage = named(() => import('@/features/dashboard/dashboard-page'), 'DashboardPage')
 const CustomersPage = named(() => import('@/features/customers/customers-page'), 'CustomersPage')
 const CustomerDetailPage = named(() => import('@/features/customers/customer-detail-page'), 'CustomerDetailPage')
 const AssetsPage = named(() => import('@/features/assets/assets-page'), 'AssetsPage')
@@ -36,6 +35,13 @@ const SchedulePage = named(() => import('@/features/field-service/schedule-page'
 const MyJobsPage = named(() => import('@/features/field-service/my-jobs-page'), 'MyJobsPage')
 const NotificationsPage = named(() => import('@/features/notifications/notifications-page'), 'NotificationsPage')
 const SLAPage = named(() => import('@/features/sla/sla-page'), 'SLAPage')
+const HomeRoute = named(() => import('@/pages/home-route'), 'HomeRoute')
+const PortalHomePage = named(() => import('@/features/portal/portal-home-page'), 'PortalHomePage')
+const PortalNewTicketPage = named(() => import('@/features/portal/portal-new-ticket-page'), 'PortalNewTicketPage')
+const PortalTicketPage = named(() => import('@/features/portal/portal-ticket-page'), 'PortalTicketPage')
+const AnalyticsPage = named(() => import('@/features/analytics/analytics-page'), 'AnalyticsPage')
+const IntegrationDetailPage = named(() => import('@/features/integrations/integration-detail-page'), 'IntegrationDetailPage')
+const IntegrationsPage = named(() => import('@/features/integrations/integrations-page'), 'IntegrationsPage')
 const ProfileSettingsPage = named(() => import('@/features/settings/profile-settings-page'), 'ProfileSettingsPage')
 
 const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</Suspense>
@@ -44,7 +50,10 @@ const page = (node: ReactNode) => <Suspense fallback={<PageFallback />}>{node}</
 // explicit "ships in Phase N" page until that phase replaces it.
 const implemented: Record<string, ReactNode> = {
   '/system': <SystemStatusPage />,
-  '/': <DashboardPage />,
+  '/': <HomeRoute />,
+  '/portal': <PortalHomePage />,
+  '/analytics': <AnalyticsPage />,
+  '/integrations': <IntegrationsPage />,
   '/tickets': <TicketsPage />,
   '/customers': <CustomersPage />,
   '/assets': <AssetsPage />,
@@ -59,6 +68,9 @@ const implemented: Record<string, ReactNode> = {
   '/settings/users': <UsersPage />,
   '/settings/organization': <OrganizationSettingsPage />,
 }
+
+/** Paths with a real page (the rest render the module placeholder). */
+export const implementedPaths = Object.keys(implemented)
 
 export const routes: RouteObject[] = [
   {
@@ -105,6 +117,18 @@ export const routes: RouteObject[] = [
               {
                 path: 'technicians/:id',
                 element: <RequirePermission anyOf={['technicians.view']}>{page(<TechnicianDetailPage />)}</RequirePermission>,
+              },
+              {
+                path: 'integrations/:id',
+                element: <RequirePermission anyOf={['integrations.manage']}>{page(<IntegrationDetailPage />)}</RequirePermission>,
+              },
+              {
+                path: 'portal/new',
+                element: <RequirePermission anyOf={['portal.access']}>{page(<PortalNewTicketPage />)}</RequirePermission>,
+              },
+              {
+                path: 'portal/tickets/:id',
+                element: <RequirePermission anyOf={['portal.access']}>{page(<PortalTicketPage />)}</RequirePermission>,
               },
               {
                 path: 'tickets/new',
