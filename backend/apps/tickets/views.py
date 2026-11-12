@@ -149,7 +149,7 @@ class TicketViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         return [HasPermission(*codes, any_of=True)()] if codes else [IsOrganizationMember()]
 
     def get_queryset(self):
-        qs = selectors.with_detail_relations(selectors.visible_tickets(self.request.tenant))
+        qs = selectors.with_detail_relations(selectors.visible_tickets(self.request.tenant)).select_related("sla")
         if self.action == "list":
             qs = search_tickets(qs, self.request.query_params.get("search", ""))
         return qs

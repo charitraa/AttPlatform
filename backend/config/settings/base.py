@@ -62,6 +62,8 @@ LOCAL_APPS = [
     "apps.knowledge",
     "apps.ai",
     "apps.field_service",
+    "apps.sla",
+    "apps.notifications",
 ]
 AUTH_USER_MODEL = "accounts.User"
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

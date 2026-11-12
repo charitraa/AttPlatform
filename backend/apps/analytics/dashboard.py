@@ -18,9 +18,7 @@ from apps.organizations.tenancy import TenantContext
 from apps.tickets.models import ACTIVE_STATUSES, Priority, TicketHistory, TicketStatus
 from apps.tickets.selectors import can_see_internal, visible_tickets
 
-UNAVAILABLE = {
-    "sla_compliance": "SLA policies arrive in Phase 6.",
-}
+UNAVAILABLE: dict[str, str] = {}
 
 
 def _hours(delta) -> float | None:
@@ -57,9 +55,9 @@ def summary(tenant: TenantContext, *, days: int = 30) -> dict:
         **counts,
         "avg_resolution_hours": _hours(averages["avg_resolution"]),
         "avg_first_response_hours": _hours(averages["avg_first_response"]),
-        "sla_compliance": None,
+        "sla_compliance": _sla_compliance(tenant, days),
         **_field_service_figures(tenant),
-        "unavailable": {**UNAVAILABLE, **_field_service_unavailable(tenant)},
+        "unavailable": {**UNAVAILABLE, **_sla_unavailable(tenant), **_field_service_unavailable(tenant)},
         "generated_at": now,
     }
 
@@ -175,3 +173,16 @@ def _field_service_unavailable(tenant: TenantContext) -> dict:
     if not ({"work_orders.view_all", "work_orders.view_own"} & perms):
         out["active_work_orders"] = "Not available for your role."
     return out
+
+
+def _sla_compliance(tenant: TenantContext, days: int) -> float | None:
+    """Share of resolution targets met (organization-wide) for tickets opened in the period."""
+    if "sla.view" not in tenant.permissions:
+        return None
+    from apps.sla.services import compliance_rate
+
+    return compliance_rate(tenant.organization, days=days)
+
+
+def _sla_unavailable(tenant: TenantContext) -> dict:
+    return {} if "sla.view" in tenant.permissions else {"sla_compliance": "Visible to people with SLA access."}

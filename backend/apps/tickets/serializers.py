@@ -56,6 +56,7 @@ class TicketListSerializer(serializers.ModelSerializer):
     assigned_agent = serializers.SerializerMethodField()
     assigned_technician = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
+    sla = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -75,6 +76,7 @@ class TicketListSerializer(serializers.ModelSerializer):
             "assigned_technician",
             "due_at",
             "is_overdue",
+            "sla",
             "created_at",
             "updated_at",
             "archived_at",
@@ -94,6 +96,17 @@ class TicketListSerializer(serializers.ModelSerializer):
 
     def get_is_overdue(self, obj) -> bool:
         return bool(obj.due_at and obj.status in ACTIVE_STATUSES and obj.due_at < timezone.now())
+
+    def get_sla(self, obj) -> dict | None:
+        """Compact SLA state, for people with sla.view (`null` otherwise or when no policy applies)."""
+        request = self.context.get("request")
+        tenant = getattr(request, "tenant", None)
+        if tenant is None or "sla.view" not in tenant.permissions:
+            return None
+        from apps.sla.serializers import SLASummarySerializer
+
+        sla = getattr(obj, "sla", None)  # RelatedObjectDoesNotExist is an AttributeError
+        return SLASummarySerializer(sla).data if sla else None
 
 
 class TicketDetailSerializer(TicketListSerializer):

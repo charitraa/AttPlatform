@@ -208,7 +208,13 @@ def assign_technician(
             "technician": {"from": str(old_tech) if old_tech else None, "to": str(technician) if technician else None}
         },
     )
-    _publish("work_order.assigned", wo, technician_user_id=str(technician.user_id) if technician else None)
+    _publish(
+        "work_order.assigned",
+        wo,
+        technician_user_id=str(technician.user_id) if technician else None,
+        previous_technician_user_id=str(old_tech.user_id) if old_tech else None,
+        actor_id=str(actor.pk),
+    )
     return wo
 
 
@@ -272,7 +278,7 @@ def advance(
     audit.record(
         "work_order.status_changed", request=request, target=wo, changes={"status": {"from": old, "to": to_status}}
     )
-    _publish("work_order.status_changed", wo, old_status=old, new_status=to_status)
+    _publish("work_order.status_changed", wo, old_status=old, new_status=to_status, actor_id=str(tenant.membership.user.pk))
     return wo
 
 
@@ -310,7 +316,7 @@ def decline(*, tenant: TenantContext, work_order: WorkOrder, reason: str, reques
     wo.save(update_fields=["technician", "status", "scheduled_start", "scheduled_end", "updated_at"])
     _log(wo, tenant.membership.user, old, WorkOrderStatus.CREATED, note=f"Declined by {tech}: {reason.strip()}")
     audit.record("work_order.declined", request=request, target=wo, changes={"reason": reason.strip()[:300]})
-    _publish("work_order.declined", wo, technician_user_id=str(tech.user_id))
+    _publish("work_order.declined", wo, technician_user_id=str(tech.user_id), actor_id=str(tenant.membership.user.pk), reason=reason.strip()[:300])
     return wo
 
 
@@ -331,7 +337,14 @@ def cancel(*, tenant: TenantContext, work_order: WorkOrder, reason: str, request
         _release_technician(wo.technician)
     _log(wo, tenant.membership.user, old, WorkOrderStatus.CANCELLED, note=reason)
     audit.record("work_order.cancelled", request=request, target=wo, changes={"reason": reason[:300]})
-    _publish("work_order.status_changed", wo, old_status=old, new_status=WorkOrderStatus.CANCELLED)
+    _publish(
+        "work_order.status_changed",
+        wo,
+        old_status=old,
+        new_status=WorkOrderStatus.CANCELLED,
+        actor_id=str(tenant.membership.user.pk),
+        technician_user_id=str(wo.technician.user_id) if wo.technician else None,
+    )
     return wo
 
 

@@ -220,7 +220,39 @@ def transition_ticket(
         target=ticket,
         changes={"status": {"from": old_status, "to": to_status}},
     )
-    _publish("ticket.status_changed", ticket, old_status=old_status, new_status=to_status)
+    _publish(
+        "ticket.status_changed",
+        ticket,
+        old_status=old_status,
+        new_status=to_status,
+        actor_id=str(user.pk),
+        by_customer=not staff,
+    )
+    return ticket
+
+
+@transaction.atomic
+def escalate_for_sla(*, ticket: Ticket, reason: str) -> Ticket | None:
+    """
+    System escalation (SLA breach). Follows the staff transition table; returns None
+    when the ticket is archived or its status can't move to Escalated (e.g. already
+    escalated, or waiting on the customer).
+    """
+    ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    if ticket.archived_at or TicketStatus.ESCALATED not in allowed_transitions(ticket.status, is_staff=True):
+        return None
+    old_status = ticket.status
+    ticket.status = TicketStatus.ESCALATED
+    ticket.save(update_fields=["status", "updated_at"])
+    _history(ticket, None, "status_changed", field="status", old=old_status, new=TicketStatus.ESCALATED)
+    audit.record(
+        "ticket.status_changed",
+        organization=ticket.organization,
+        target=ticket,
+        changes={"status": {"from": old_status, "to": TicketStatus.ESCALATED}, "reason": reason},
+        actor_type="system",
+    )
+    _publish("ticket.status_changed", ticket, old_status=old_status, new_status=TicketStatus.ESCALATED, reason=reason)
     return ticket
 
 
@@ -319,6 +351,7 @@ def assign(*, organization, actor, ticket: Ticket, agent_id=UNSET, technician_id
         fields=sorted(changed),
         agent_id=str(ticket.assigned_agent_id or "") or None,
         technician_id=str(ticket.assigned_technician_id or "") or None,
+        actor_id=str(actor.pk) if actor else None,
     )
     return ticket
 
@@ -366,7 +399,14 @@ def add_comment(
         ticket.status = new_status
         update_fields.append("status")
     ticket.save(update_fields=update_fields)
-    _publish("ticket.commented", ticket, comment_id=str(comment.id), visibility=visibility, by_customer=not staff)
+    _publish(
+        "ticket.commented",
+        ticket,
+        comment_id=str(comment.id),
+        visibility=visibility,
+        by_customer=not staff,
+        actor_id=str(user.pk),
+    )
     return comment
 
 

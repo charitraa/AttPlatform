@@ -43,8 +43,8 @@ def test_summary_counts_from_real_data(client_for, admin, setup):
     assert body["critical_open"] == 2
     assert body["unassigned_open"] == 2
     assert body["avg_resolution_hours"] == 15.0
-    # Metrics from modules that don't exist yet are null with a reason — never invented.
-    assert body["sla_compliance"] is None and "Phase 6" in body["unavailable"]["sla_compliance"]
+    # These tickets were inserted directly (no SLA clock), so there is no compliance figure yet — never invented.
+    assert body["sla_compliance"] is None and "sla_compliance" not in body["unavailable"]
     # Field-service figures are real since Phase 5: one available technician, no active work orders.
     assert body["technicians_available"] == 1 and body["technicians_total"] == 1
     assert body["active_work_orders"] == 0
