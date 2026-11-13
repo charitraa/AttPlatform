@@ -562,6 +562,21 @@
   ready for a number.
 - Known: one dashboard component test flaked once under full-suite load (passes alone and on re-run).
 
+### Follow-up: free SMS and Telegram channels (2026-11-12)
+- **SMS via your Android phone** (`sms/android_gateway`): the open-source *SMS Gateway for Android* app
+  (sms-gate.app) in Cloud server mode, so messages go out through the user's own SIM. Local mode (phone IP)
+  is deliberately unsupported because the SSRF guard refuses private addresses.
+- **Telegram bot** (`telegram/bot`): free notifications. People link their chat themselves (Notifications →
+  Preferences → Connect Telegram → press Start; one-time code, 15 min), picked up by polling `getUpdates`
+  (beat every minute, plus an immediate "check"); `/stop` unlinks. The bot token is never echoed in errors.
+- **SMS and Telegram are notification channels** alongside In-app, Email and WhatsApp, each offered only when
+  the organization has that integration and shown with a per-person readiness line (phone missing, Telegram
+  not connected). One generic delivery task for WhatsApp/SMS/Telegram; provider rejections fail without
+  retries. The first enabled integration of a kind delivers that channel.
+- Verified live: an SMS-channel notification delivered through the worker to the development log.
+- Fixed the flaky dashboard test: lazy route chunks can take more than 1 s to import under full-suite load,
+  so the test async timeout is now 3 s (three green runs in a row).
+
 ## Phase 8 — Hardening (next)
 
 Security audit against `security.md`, `check --deploy`, dependency audit; drf-spectacular

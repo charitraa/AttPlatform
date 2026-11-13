@@ -25,6 +25,7 @@ class Integration(BaseModel):
         EMAIL = "email", "Email to ticket"
         SMS = "sms", "SMS"
         WHATSAPP = "whatsapp", "WhatsApp"
+        TELEGRAM = "telegram", "Telegram"
         REST_API = "rest_api", "REST API"
 
     class Health(models.TextChoices):

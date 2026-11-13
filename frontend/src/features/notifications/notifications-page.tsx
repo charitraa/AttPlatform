@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { firstErrorMessage } from '@/lib/forms'
 import { cn } from '@/lib/utils'
-import { type Preference, useMarkRead, useNotifications, usePreferences, useSavePreferences, useUnreadCount } from './api'
+import { type Preference, useChannels, useMarkRead, useNotifications, usePreferences, useSavePreferences, useTelegram, useUnreadCount } from './api'
 
 function Inbox() {
   const [unreadOnly, setUnreadOnly] = useState(false)
@@ -73,12 +73,59 @@ function Inbox() {
   )
 }
 
+const SETUP_LABEL: Record<string, string> = { whatsapp: 'WhatsApp', sms: 'SMS', telegram: 'Telegram' }
+
+/** One line per external channel: ready, or what the person still needs to do. */
+function ChannelSetup() {
+  const channels = useChannels()
+  const tg = useTelegram()
+  const [waiting, setWaiting] = useState(false)
+  const external = (channels.data ?? []).filter((c) => c.channel in SETUP_LABEL)
+  if (external.length === 0) return null
+  const connect = () => tg.link.mutate(undefined, {
+    onSuccess: ({ url }) => { window.open(url, '_blank', 'noopener'); setWaiting(true) },
+    onError: (e) => toast.error(firstErrorMessage(e)),
+  })
+  const check = () => tg.check.mutate(undefined, {
+    onSuccess: (r) => { if (r.linked) { setWaiting(false); toast.success('Telegram connected') } else toast.error("Not yet — press Start in the Telegram chat, then check again.") },
+    onError: (e) => toast.error(firstErrorMessage(e)),
+  })
+  return (
+    <ul className="space-y-2 rounded-lg border p-3 text-sm" aria-label="Channel set-up">
+      {external.map((c) => (
+        <li key={c.channel} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="w-20 font-medium">{SETUP_LABEL[c.channel]}</span>
+          {c.ready ? (
+            <span className="text-success">Ready{c.detail && ` · ${c.detail}`}</span>
+          ) : c.channel === 'telegram' ? (
+            <span className="text-muted-foreground">Not connected</span>
+          ) : (
+            <span className="text-muted-foreground">{c.help} <a href="/settings/profile" className="text-primary hover:underline">Open profile</a></span>
+          )}
+          {c.channel === 'telegram' && (
+            <span className="ml-auto flex gap-2">
+              {c.ready ? (
+                <Button size="sm" variant="ghost" onClick={() => tg.unlink.mutate()}>Disconnect</Button>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" onClick={connect} disabled={tg.link.isPending}>Connect Telegram</Button>
+                  {waiting && <Button size="sm" onClick={check} disabled={tg.check.isPending}>I've pressed Start</Button>}
+                </>
+              )}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function Preferences() {
   const prefs = usePreferences()
   const save = useSavePreferences()
   if (prefs.isPending) return <Skeleton className="h-64" />
   if (prefs.isError) return <ErrorState error={prefs.error} onRetry={() => prefs.refetch()} />
-  const CHANNEL_LABEL: Record<string, string> = { in_app: 'In-app', email: 'Email', whatsapp: 'WhatsApp' }
+  const CHANNEL_LABEL: Record<string, string> = { in_app: 'In-app', email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS', telegram: 'Telegram' }
   const channels = [...new Set(prefs.data.map((p) => p.channel))]
   const rows = new Map<string, { label: string; byChannel: Record<string, Preference> }>()
   for (const p of prefs.data) {
@@ -95,12 +142,10 @@ function Preferences() {
     <Card>
       <CardHeader>
         <CardTitle>What you're told about</CardTitle>
-        <CardDescription>
-          Changes save straight away. You're never notified about things you did yourself.
-          {channels.includes('whatsapp') && <> WhatsApp messages go to the phone number in your <a href="/settings/profile" className="text-primary hover:underline">profile</a> (international format, e.g. +977 98…).</>}
-        </CardDescription>
+        <CardDescription>Changes save straight away. You're never notified about things you did yourself.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <ChannelSetup />
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground"><th className="py-2 font-medium">Event</th>{channels.map((c) => <th key={c} className="w-24 py-2 text-center font-medium">{CHANNEL_LABEL[c] ?? c}</th>)}</tr>

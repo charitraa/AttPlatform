@@ -20,6 +20,8 @@ class Channel(models.TextChoices):
     IN_APP = "in_app", "In-app"
     EMAIL = "email", "Email"
     WHATSAPP = "whatsapp", "WhatsApp"
+    SMS = "sms", "SMS"
+    TELEGRAM = "telegram", "Telegram"
 
 
 # Defaults when a user has not chosen: email only for things that need action soon.
@@ -92,3 +94,20 @@ class NotificationPreference(models.Model):
 
     def __str__(self) -> str:
         return f"{self.type}/{self.channel}: {'on' if self.enabled else 'off'}"
+
+
+class ChatLink(models.Model):
+    """A person's address on a chat channel that can't be typed in (Telegram chat ID), linked by the person."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    organization = models.ForeignKey("organizations.Organization", on_delete=models.CASCADE, related_name="+")
+    channel = models.CharField(max_length=10, choices=Channel.choices)
+    address = models.CharField(max_length=64)
+    display_name = models.CharField(max_length=100, blank=True)
+    linked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("user", "organization", "channel"), name="uniq_chat_link")]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} {self.channel}"

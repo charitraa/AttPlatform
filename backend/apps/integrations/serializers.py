@@ -239,7 +239,9 @@ class IntegrationLogSerializer(serializers.ModelSerializer):
 
 
 class SendTestSerializer(serializers.Serializer):
-    to = serializers.RegexField(r"^\+[1-9]\d{6,14}$", help_text="E.164 phone number, e.g. +9779812345678")
+    to = serializers.RegexField(
+        r"^(\+[1-9]\d{6,14}|-?\d{5,20})$", help_text="E.164 phone number (+9779812345678) or a Telegram chat ID"
+    )
     text = serializers.CharField(max_length=600, required=False, allow_blank=True, default="")
     template = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     variables = serializers.ListField(child=serializers.CharField(max_length=100), required=False, default=list)

@@ -18,7 +18,7 @@ from django.utils import timezone
 from apps.organizations.models import Membership
 
 from . import realtime
-from .models import DEFAULT_ENABLED, Channel, Notification, NotificationDelivery, NotificationPreference
+from .models import DEFAULT_ENABLED, Channel, ChatLink, Notification, NotificationDelivery, NotificationPreference
 
 PHONE_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 
@@ -39,12 +39,39 @@ def whatsapp_integration(organization):
     return None
 
 
+def channel_integration(organization, channel: str):
+    """The integration that delivers `channel` for this organization (None for in-app/email or when not set up)."""
+    from apps.integrations.models import Integration
+
+    if channel == Channel.WHATSAPP:
+        return whatsapp_integration(organization)
+    kind = {Channel.SMS: Integration.Kind.SMS, Channel.TELEGRAM: Integration.Kind.TELEGRAM}.get(channel)
+    if kind is None:
+        return None
+    return (
+        Integration.objects.filter(organization=organization, kind=kind, is_enabled=True).order_by("created_at").first()
+    )
+
+
+EXTERNAL = (Channel.WHATSAPP, Channel.SMS, Channel.TELEGRAM)
+
+
 def channels_for(organization) -> list[str]:
-    return [Channel.IN_APP, Channel.EMAIL] + ([Channel.WHATSAPP] if whatsapp_integration(organization) else [])
+    return [Channel.IN_APP, Channel.EMAIL] + [c for c in EXTERNAL if channel_integration(organization, c)]
+
+
+def address_for(user, organization, channel: str) -> str | None:
+    """Where to send `channel` messages for this person, or None if they haven't set it up."""
+    if channel in (Channel.WHATSAPP, Channel.SMS):
+        return e164(user.phone)
+    if channel == Channel.TELEGRAM:
+        link = ChatLink.objects.filter(user=user, organization=organization, channel=channel).first()
+        return link.address if link else None
+    return None
 
 
 def preferences_for(user, organization) -> dict[str, dict[str, bool]]:
-    prefs = {t: {**dict(channels), Channel.WHATSAPP: False} for t, channels in DEFAULT_ENABLED.items()}
+    prefs = {t: {**dict(channels), **dict.fromkeys(EXTERNAL, False)} for t, channels in DEFAULT_ENABLED.items()}
     for p in NotificationPreference.objects.filter(user=user, organization=organization):
         if p.type in prefs:
             prefs[p.type][p.channel] = p.enabled
@@ -96,13 +123,14 @@ def notify(
         ).values_list("user_id", flat=True)
     )
     created = []
-    wa = whatsapp_integration(organization)
+    external = {c: channel_integration(organization, c) for c in EXTERNAL}
     with transaction.atomic():
         for user_id in active_ids:
             user = unique[user_id]
-            channels = preferences_for(user, organization).get(type, {})
-            if not wa or not e164(user.phone):
-                channels = {**channels, Channel.WHATSAPP: False}
+            channels = dict(preferences_for(user, organization).get(type, {}))
+            for c in EXTERNAL:  # only channels that are set up for the organization and the person
+                if channels.get(c) and not (external[c] and address_for(user, organization, c)):
+                    channels[c] = False
             if not any(channels.values()):
                 continue
             n = Notification.objects.create(
@@ -119,9 +147,10 @@ def notify(
             if channels.get(Channel.EMAIL) and user.email:
                 delivery = NotificationDelivery.objects.create(notification=n, channel=Channel.EMAIL)
                 transaction.on_commit(lambda d=delivery.pk: _queue_email(d))
-            if wa and channels.get(Channel.WHATSAPP) and e164(user.phone):
-                delivery = NotificationDelivery.objects.create(notification=n, channel=Channel.WHATSAPP)
-                transaction.on_commit(lambda d=delivery.pk: _queue_whatsapp(d))
+            for c in EXTERNAL:
+                if channels.get(c):
+                    delivery = NotificationDelivery.objects.create(notification=n, channel=c)
+                    transaction.on_commit(lambda d=delivery.pk: _queue_message(d))
             if n.in_app:
                 transaction.on_commit(
                     lambda n=n: realtime.push(
@@ -142,10 +171,10 @@ def _queue_email(delivery_id) -> None:
     deliver_email.delay(str(delivery_id))
 
 
-def _queue_whatsapp(delivery_id) -> None:
-    from .tasks import deliver_whatsapp
+def _queue_message(delivery_id) -> None:
+    from .tasks import deliver_message
 
-    deliver_whatsapp.delay(str(delivery_id))
+    deliver_message.delay(str(delivery_id))
 
 
 def inbox(user, organization):

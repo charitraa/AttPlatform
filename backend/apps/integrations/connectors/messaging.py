@@ -14,6 +14,16 @@ from .. import net
 from .base import Connector, ConnectorError, Field, OutboundMessage, SendResult, TestResult, register
 
 
+def _ensure_ok_list(resp: net.Response, what: str) -> list:
+    if resp.status >= 400:
+        raise ConnectorError(f"{what} failed (HTTP {resp.status}).")
+    try:
+        data = resp.json()
+    except ValueError:
+        data = None
+    return data if isinstance(data, list) else []
+
+
 def _ensure_ok(resp: net.Response, what: str) -> dict:
     try:
         data = resp.json() or {}
@@ -164,3 +174,89 @@ class WhatsAppCloud(Connector):
             net.post_json(f"{self.API}/{pid}/messages", body, headers=self._headers()), "Sending the message"
         )
         return SendResult(provider_id=((data.get("messages") or [{}])[0]).get("id", ""), status="accepted")
+
+
+@register
+class AndroidSMSGateway(Connector):
+    kind, provider = "sms", "android_gateway"
+    label = "SMS via your Android phone"
+    description = (
+        "Send SMS from your own SIM with the free, open-source “SMS Gateway for Android” app (sms-gate.app) in "
+        "Cloud server mode. Costs only what your mobile plan charges."
+    )
+    fields = (
+        Field("username", "User name", help="Shown in the app under Cloud server."),
+        Field(
+            "api_url",
+            "API URL",
+            required=False,
+            kind="url",
+            help="Leave empty for the public cloud (https://api.sms-gate.app). Must be a public https address.",
+        ),
+    )
+    secrets = (Field("password", "Password", help="Shown in the app under Cloud server."),)
+    can_send = True
+    CLOUD = "https://api.sms-gate.app"
+
+    def _base(self) -> str:
+        return (self.integration.config.get("api_url") or self.CLOUD).rstrip("/") + "/3rdparty/v1"
+
+    def _auth(self) -> dict:
+        token = base64.b64encode(f"{self.integration.config['username']}:{self.secret('password')}".encode()).decode()
+        return {"Authorization": f"Basic {token}"}
+
+    def test_connection(self) -> TestResult:
+        resp = net.request("GET", f"{self._base()}/devices", headers=self._auth())
+        if resp.status == 401:
+            raise ConnectorError("The user name or password was rejected. Copy them again from the app.")
+        data = _ensure_ok_list(resp, "Signing in to SMS Gateway")
+        if not data:
+            return TestResult(True, "Signed in, but no phone is connected yet. Open the app and turn on Cloud server.")
+        names = ", ".join(d.get("name") or d.get("id", "phone") for d in data[:3])
+        return TestResult(True, f"Connected to {names}.")
+
+    def send(self, message: OutboundMessage) -> SendResult:
+        resp = net.post_json(
+            f"{self._base()}/message", {"message": message.text, "phoneNumbers": [message.to]}, headers=self._auth()
+        )
+        data = _ensure_ok(resp, "Sending the SMS")
+        return SendResult(provider_id=str(data.get("id", "")), status=str(data.get("state", "queued")).lower())
+
+
+@register
+class TelegramBot(Connector):
+    kind, provider = "telegram", "bot"
+    label = "Telegram bot"
+    description = (
+        "Send notifications to Telegram for free. Create a bot with @BotFather, paste its token here, then each "
+        "person connects their Telegram from Notifications → Preferences."
+    )
+    secrets = (Field("bot_token", "Bot token", help="From @BotFather, looks like 123456:ABC-…"),)
+    can_send = True
+    receives = True
+
+    def _url(self, method: str) -> str:
+        return f"https://api.telegram.org/bot{self.secret('bot_token')}/{method}"
+
+    def call(self, method: str, payload: dict | None = None) -> dict:
+        try:
+            resp = net.post_json(self._url(method), payload or {})
+        except (net.EgressError, net.UnsafeURL) as exc:  # never echo the URL: it contains the token
+            raise ConnectorError(f"Can't reach Telegram ({type(exc).__name__}).") from exc
+        try:
+            data = resp.json() or {}
+        except ValueError:
+            data = {}
+        if resp.status >= 400 or not data.get("ok"):
+            raise ConnectorError(f"Telegram refused the request: {str(data.get('description', resp.status))[:200]}")
+        return data.get("result")
+
+    def test_connection(self) -> TestResult:
+        me = self.call("getMe")
+        return TestResult(True, f"Connected as @{me.get('username')}.")
+
+    def send(self, message: OutboundMessage) -> SendResult:
+        result = self.call(
+            "sendMessage", {"chat_id": message.to, "text": message.text, "disable_web_page_preview": True}
+        )
+        return SendResult(provider_id=str(result.get("message_id", "")), status="sent")

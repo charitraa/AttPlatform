@@ -51,3 +51,18 @@ export function useSavePreferences() {
     onSuccess: (data) => qc.setQueryData(['notifications', 'preferences'], data),
   })
 }
+
+const channelSchema = z.object({ channel: z.string(), ready: z.boolean(), help: z.string(), detail: z.string() })
+export type ChannelStatus = z.infer<typeof channelSchema>
+export const useChannels = () =>
+  useQuery({ queryKey: ['notifications', 'channels'], queryFn: () => api.get('/notifications/channels/', { schema: z.array(channelSchema) }) })
+
+export function useTelegram() {
+  const qc = useQueryClient()
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['notifications', 'channels'] })
+  return {
+    link: useMutation({ mutationFn: () => api.post('/notifications/telegram/link/', {}, { schema: z.object({ url: z.string() }) }) }),
+    check: useMutation({ mutationFn: () => api.post('/notifications/telegram/check/', {}, { schema: z.object({ linked: z.boolean() }) }), onSuccess: refresh }),
+    unlink: useMutation({ mutationFn: () => api.delete('/notifications/telegram/link/'), onSuccess: refresh }),
+  }
+}

@@ -291,8 +291,8 @@ def test_whatsapp_needs_a_phone_and_does_not_retry_recipient_errors(team, org, d
         400, b'{"error": {"message": "(#131030) Recipient phone number not in allowed list"}}', {}, 5
     )
     with mock.patch.object(net, "request", return_value=refused):
-        from apps.notifications.tasks import deliver_whatsapp
+        from apps.notifications.tasks import deliver_message
 
-        assert deliver_whatsapp.run(str(d.id)) == "failed"
+        assert deliver_message.run(str(d.id)) == "failed"
     d.refresh_from_db()
     assert d.attempts == 1 and "131030" in d.last_error

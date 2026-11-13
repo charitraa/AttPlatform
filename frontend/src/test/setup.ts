@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { useAuthStore } from '@/stores/auth'
 import { server } from './server'
+
+// Routes are lazy-loaded chunks (charts etc.); a cold import under full-suite load can exceed the 1 s default.
+configure({ asyncUtilTimeout: 3000 })
 
 // jsdom lacks matchMedia and WebSocket; provide minimal, inert versions.
 Object.defineProperty(window, 'matchMedia', {

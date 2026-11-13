@@ -145,3 +145,30 @@ describe('WhatsApp preferences', () => {
     await waitFor(() => expect(saved).toEqual([{ type: 'sla_breached', channel: 'whatsapp', enabled: true }]))
   })
 })
+
+describe('chat channels', () => {
+  it('connects Telegram: opens the bot link, then confirms', async () => {
+    const user = userEvent.setup()
+    let linked = false
+    const opened: string[] = []
+    window.open = ((url: string) => { opened.push(url); return null }) as typeof window.open
+    server.use(
+      http.get(`${API}/notifications/preferences/`, () => HttpResponse.json(['in_app', 'email', 'telegram'].map((channel) => ({ type: 'sla_breached', label: 'SLA breached', channel, enabled: false })))),
+      http.get(`${API}/notifications/channels/`, () => HttpResponse.json([
+        { channel: 'in_app', ready: true, help: '', detail: '' },
+        { channel: 'sms', ready: false, help: 'Add your mobile number (international format, e.g. +977 98…) to your profile.', detail: '' },
+        { channel: 'telegram', ready: linked, help: linked ? '' : 'Connect your Telegram account.', detail: linked ? 'Ana' : '' },
+      ])),
+      http.post(`${API}/notifications/telegram/link/`, () => HttpResponse.json({ url: 'https://t.me/att_demo_bot?start=abc' })),
+      http.post(`${API}/notifications/telegram/check/`, () => { linked = true; return HttpResponse.json({ linked: true }) }),
+    )
+    renderRoute('/notifications', { user: makeMe() })
+    await user.click(await screen.findByRole('tab', { name: 'Preferences' }))
+    const setup = await screen.findByRole('list', { name: 'Channel set-up' })
+    expect(within(setup).getByText(/Add your mobile number/)).toBeInTheDocument()
+    await user.click(within(setup).getByRole('button', { name: 'Connect Telegram' }))
+    expect(opened).toEqual(['https://t.me/att_demo_bot?start=abc'])
+    await user.click(await within(setup).findByRole('button', { name: "I've pressed Start" }))
+    expect(await within(setup).findByText('Ready · Ana')).toBeInTheDocument()
+  })
+})

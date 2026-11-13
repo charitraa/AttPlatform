@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
-from rest_framework import mixins, serializers, status, viewsets
+from rest_framework import exceptions, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -85,3 +85,93 @@ class PreferencesView(APIView):
         s.is_valid(raise_exception=True)
         prefs = services.set_preferences(request.user, request.organization, s.validated_data)
         return Response(_flatten(prefs, services.channels_for(request.organization)), status=status.HTTP_200_OK)
+
+
+CHANNEL_HELP = {
+    "whatsapp": "Add your mobile number (international format, e.g. +977 98…) to your profile.",
+    "sms": "Add your mobile number (international format, e.g. +977 98…) to your profile.",
+    "telegram": "Connect your Telegram account.",
+}
+
+
+@extend_schema(tags=["notifications"])
+class ChannelsView(APIView):
+    """Which channels the organization offers and whether you're set up to receive each one."""
+
+    permission_classes = [IsOrganizationMember]
+
+    @extend_schema(
+        responses=inline_serializer(
+            "Channel",
+            {
+                "channel": serializers.CharField(),
+                "ready": serializers.BooleanField(),
+                "help": serializers.CharField(),
+                "detail": serializers.CharField(allow_blank=True),
+            },
+            many=True,
+        )
+    )
+    def get(self, request):
+        from .models import ChatLink
+
+        out = []
+        for c in services.channels_for(request.organization):
+            ready = c in ("in_app", "email") or bool(services.address_for(request.user, request.organization, c))
+            detail = ""
+            if c == "telegram" and ready:
+                link = ChatLink.objects.filter(user=request.user, organization=request.organization, channel=c).first()
+                detail = link.display_name if link else ""
+            out.append(
+                {"channel": c, "ready": ready, "help": "" if ready else CHANNEL_HELP.get(c, ""), "detail": detail}
+            )
+        return Response(out)
+
+
+def _telegram(request):
+    from .models import Channel
+
+    integration = services.channel_integration(request.organization, Channel.TELEGRAM)
+    if integration is None:
+        raise exceptions.ValidationError({"detail": ["Telegram isn't set up for this organization."]})
+    return integration
+
+
+@extend_schema(tags=["notifications"])
+class TelegramLinkView(APIView):
+    """Start linking your Telegram (returns a t.me link to open), or disconnect it."""
+
+    permission_classes = [IsOrganizationMember]
+
+    @extend_schema(request=None, responses=inline_serializer("TelegramLink", {"url": serializers.URLField()}))
+    def post(self, request):
+        from apps.integrations.connectors.base import ConnectorError
+
+        from . import telegram
+
+        try:
+            url = telegram.start_link(request.user, request.organization, _telegram(request))
+        except ConnectorError as exc:
+            raise exceptions.ValidationError({"detail": [str(exc)]}) from exc
+        return Response({"url": url})
+
+    @extend_schema(request=None, responses={204: None})
+    def delete(self, request):
+        from .models import ChatLink
+
+        ChatLink.objects.filter(user=request.user, organization=request.organization, channel="telegram").delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["notifications"])
+class TelegramCheckView(APIView):
+    """Check now whether you've pressed Start in Telegram (instead of waiting for the next minute)."""
+
+    permission_classes = [IsOrganizationMember]
+
+    @extend_schema(request=None, responses=inline_serializer("TelegramCheck", {"linked": serializers.BooleanField()}))
+    def post(self, request):
+        from . import telegram
+
+        telegram.poll(_telegram(request))
+        return Response({"linked": bool(services.address_for(request.user, request.organization, "telegram"))})
