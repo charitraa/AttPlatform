@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.prod.example
 !frontend/.env.test
 
 # Python
@@ -27,3 +28,7 @@ frontend/coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Production TLS material and ACME webroot (docker-compose.prod.yml)
+certs/
+certbot/

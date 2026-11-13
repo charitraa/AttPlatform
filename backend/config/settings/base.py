@@ -223,6 +223,20 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "SCHEMA_PATH_PREFIX": r"/api/v1",
     "COMPONENT_SPLIT_REQUEST": True,
+    # Stable, readable names for choice sets that several models share or that share a field name.
+    "ENUM_NAME_OVERRIDES": {
+        "TicketChannelEnum": "apps.tickets.models.Ticket.Channel",
+        "NotificationChannelEnum": "apps.notifications.models.Channel",
+        "PriorityEnum": "apps.tickets.models.Priority",
+        "TicketStatusEnum": "apps.tickets.models.TicketStatus",
+        "SLAMetricStatusEnum": "apps.sla.models.MetricStatus",
+        "CustomerTierEnum": "apps.customers.models.Customer.Tier",
+        "WorkOrderStatusEnum": "apps.field_service.models.WorkOrderStatus",
+        "IntegrationKindEnum": "apps.integrations.models.Integration.Kind",
+        "NotificationTypeEnum": "apps.notifications.models.NotificationType",
+        "AICapabilityEnum": "apps.ai.models.Capability",
+        "EvidenceKindEnum": "apps.field_service.models.WorkOrderEvidence.Kind",
+    },
 }
 
 # ------------------------------------------------------------------------- CORS

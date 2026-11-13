@@ -8,3 +8,5 @@ htmlcov
 media
 staticfiles
 .env
+.local-media
+apps/**/*.png

@@ -577,8 +577,75 @@
 - Fixed the flaky dashboard test: lazy route chunks can take more than 1 s to import under full-suite load,
   so the test async timeout is now 3 s (three green runs in a row).
 
-## Phase 8 — Hardening (next)
+## Phase 8 — Hardening ✅ (2026-11-13)
 
-Security audit against `security.md`, `check --deploy`, dependency audit; drf-spectacular
-warnings; Nginx `resolver` for container restarts; coverage gaps; end-to-end workflow tests;
-performance (query counts, indexes, caching); production images and deployment guide.
+### Completed
+
+**Security**
+- `check --deploy` against production settings: **0 Django security findings** (HSTS + preload, SSL redirect,
+  secure cookies, strong secret key enforced, DEBUG off).
+- Dependency audit: Python (pip-audit on `requirements/prod.txt`) **no known vulnerabilities**; frontend
+  production dependencies **none**. `shadcn` was mis-declared as a runtime dependency; it only supplies one CSS
+  file at build time, so it moved to `devDependencies` (its CLI's `minimatch`/`deepmerge` advisories never ship).
+- **Anonymous-access sweep** (`core/tests/test_security_sweep.py`): walks every route under `/api/v1/` and
+  asserts 401/403 for GET/POST/PATCH/DELETE without credentials, except a reviewed allowlist (health, meta, auth
+  flows, signed inbound webhooks, API docs) where every entry carries a reason. New endpoints are covered
+  automatically; stale allowlist entries fail too.
+- Production edge security headers: strict **CSP**, HSTS, `nosniff`, frame denial, referrer and permissions
+  policies, COOP; per-IP rate limits at the edge (10/min on credential endpoints, 20 req/s on the API) in front
+  of Django's throttles. Verified: 4 failed logins then `429`.
+
+**API schema**: 64 drf-spectacular warnings/errors → **0** (schema-only `queryset` on 25 tenant-scoped viewsets,
+declared responses for dashboard/AI status views, stable enum names, typed nested path parameters, unique
+operation IDs). The published Swagger/ReDoc docs now carry real types.
+
+**Infrastructure**
+- Nginx re-resolves upstreams (Docker DNS, `resolver` + variable `proxy_pass`): recreating the backend no longer
+  causes 502s. Verified in dev (recreate → 200 without restarting Nginx; WebSocket still upgrades).
+- **Production stack**: `docker-compose.prod.yml` (db, redis, one-off `migrate`, backend, worker with health
+  check, beat, `web` edge), `infrastructure/web.Dockerfile` (built SPA + Nginx), `infrastructure/nginx-prod/`
+  (TLS, HTTP→HTTPS, SPA fallback for client-side routes, immutable caching of fingerprinted assets, media never
+  served), `.env.prod.example`, root `.dockerignore`; uploaded media excluded from the backend image.
+  Production config kept out of the dev-mounted Nginx folder (it would have broken dev on restart).
+- **Deployment guide** (`docs/deployment.md`): configuration, TLS (Let's Encrypt), first organization, backups and
+  restore, upgrades, operations, security checklist.
+
+**Quality**
+- **Production smoke test** (built both images, ran the full prod stack on 8081/8443 with a self-signed cert):
+  migrations, all services healthy, HTTP→HTTPS, deep links, headers, caching, admin static, organization
+  sign-up (refresh cookie `HttpOnly; Secure; SameSite=Strict`), new org gets its SLA policy, sign-in, `wss://`
+  events, login rate limiting. Torn down afterwards.
+- **N+1 guard** (`core/tests/test_query_counts.py`): 12 list endpoints across admin, customer and technician roles
+  on the full demo dataset use the same number of queries for 5 and 25 rows (4–7 per page). No N+1 found.
+- **End-to-end journey** (`core/tests/test_end_to_end.py`): portal request → SLA clock → AI triage → assignment
+  + notification → first response met → work order + notification → technician workflow with evidence →
+  resolution → customer confirms and rates → SLA report, satisfaction report and signed webhooks all reflect it
+  (descriptions are not broadcast).
+- Maintenance commands (`sla_backfill`, `ai_backfill`) and scheduled-task wrappers now tested.
+- Flaky frontend test fixed (lazy route chunks vs the 1 s async timeout).
+
+### Tests executed
+
+| Suite | Result |
+|-------|--------|
+| Backend pytest (fresh test DB) | **395 passed**, coverage **93 %** (8,682 statements) |
+| Frontend Vitest | **102 passed** (three consecutive green runs) |
+| Lint / type-check / build / migrations check / schema validation | clean; schema 0 warnings |
+| `check --deploy` (prod settings) | 0 security findings |
+| Dependency audit | Python none; frontend production none (2 dev-tooling advisories, one without an upstream fix) |
+| Production stack | built and verified as above |
+
+### Bugs found and fixed during Phase 8
+- Nginx kept a stale backend IP after container recreation (502 until restart).
+- The production frontend image was bare Nginx: client-side routes would 404 on refresh and no security headers.
+- `.env.prod.example` would have been git-ignored by `.env.*`; `certs/` wasn't ignored.
+- Uploaded evidence (`backend/.local-media`) would have been baked into the production image.
+- A test fixture of mine wrote demo data outside the test transaction, polluting the reused test DB (caught
+  when the e2e test resolved the wrong organization); rewritten to stay transactional.
+
+### Known gaps / next steps
+- No real-browser E2E (Playwright) in this environment; component tests + API journey cover the flows.
+- HTTP→HTTPS redirect drops a non-standard HTTPS port (fine on 443).
+- WhatsApp template `att_notification` was still pending Meta review.
+- Single-host Compose; for HA, move PostgreSQL/Redis to managed services and run several `backend` replicas.
+- Customers still receive `due_at` on the staff tickets API they can call directly; the portal API exposes no SLA fields.

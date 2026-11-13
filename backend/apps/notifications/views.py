@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from apps.organizations.permissions import IsOrganizationMember
 
 from . import services
-from .models import NotificationType
+from .models import Notification, NotificationType
 from .serializers import MarkReadSerializer, NotificationSerializer, PreferenceSerializer
 
 COUNT = inline_serializer("UnreadCount", {"unread": serializers.IntegerField()})
@@ -21,6 +21,8 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     permission_classes = [IsOrganizationMember]
     serializer_class = NotificationSerializer
+
+    queryset = Notification.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         qs = services.inbox(self.request.user, self.request.organization)

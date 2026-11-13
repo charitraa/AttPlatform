@@ -89,6 +89,8 @@ class SkillViewSet(viewsets.ModelViewSet):
     serializer_class = SkillSerializer
     pagination_class = None
 
+    queryset = Skill.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return Skill.objects.filter(organization=self.request.organization).prefetch_related("ticket_categories")
 
@@ -102,6 +104,8 @@ class ServiceAreaViewSet(viewsets.ModelViewSet):
     method_permissions = TECH_PERMS
     serializer_class = ServiceAreaSerializer
     pagination_class = None
+
+    queryset = ServiceArea.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return ServiceArea.objects.filter(organization=self.request.organization)
@@ -132,6 +136,8 @@ class TechnicianViewSet(
         if self.action in ("availability", "remove_availability"):
             return [HasPermission("technicians.view", "work_orders.execute", any_of=True)()]
         return super().get_permissions()
+
+    queryset = Technician.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         today = timezone.localdate()
@@ -193,6 +199,7 @@ class TechnicianViewSet(
         return Response(CertificationSerializer(tech.certifications.all(), many=True).data)
 
     @extend_schema(request=None, responses={204: None})
+    @extend_schema(parameters=[OpenApiParameter("cert_id", OpenApiTypes.UUID, OpenApiParameter.PATH)])
     @action(detail=True, methods=["delete"], url_path=r"certifications/(?P<cert_id>[^/.]+)")
     def remove_certification(self, request, pk=None, cert_id=None):
         get_object_or_404(TechnicianCertification, technician=self.get_object(), pk=cert_id).delete()
@@ -213,6 +220,7 @@ class TechnicianViewSet(
         return Response(AvailabilitySerializer(qs, many=True).data)
 
     @extend_schema(request=None, responses={204: None})
+    @extend_schema(parameters=[OpenApiParameter("entry_id", OpenApiTypes.UUID, OpenApiParameter.PATH)])
     @action(detail=True, methods=["delete"], url_path=r"availability/(?P<entry_id>[^/.]+)")
     def remove_availability(self, request, pk=None, entry_id=None):
         tech = self.get_object()
@@ -320,6 +328,8 @@ class WorkOrderViewSet(
 
     def get_permissions(self):
         return [HasPermission(*self.action_permissions.get(self.action, WO_VIEW), any_of=True)()]
+
+    queryset = WorkOrder.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         qs = (

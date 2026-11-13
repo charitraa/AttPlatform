@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from apps.assets.models import Asset
 from apps.organizations.permissions import HasPermission
 from apps.tickets import services as ticket_services
-from apps.tickets.models import TicketCategory, TicketComment, TicketStatus
+from apps.tickets.models import Ticket, TicketCategory, TicketComment, TicketStatus
 from apps.tickets.selectors import customer_ids_for_user, visible_tickets
 
 from . import services
@@ -31,6 +31,8 @@ class PortalTicketViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, view
 
     permission_classes = PORTAL
     serializer_class = PortalTicketSerializer
+
+    queryset = Ticket.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         qs = (

@@ -46,6 +46,7 @@ class ReportListView(APIView):
 
     permission_classes = [HasPermission("analytics.view")]
 
+    @extend_schema(operation_id="analytics_reports_list")
     def get(self, request):
         return Response([{"name": n, "title": n.replace("_", " ").capitalize()} for n in reports.REPORTS])
 

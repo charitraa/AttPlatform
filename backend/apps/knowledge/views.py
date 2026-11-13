@@ -41,6 +41,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
     filterset_fields = ("status", "source", "category")
     ordering_fields = ("updated_at", "title", "published_at")
 
+    queryset = KnowledgeArticle.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         qs = KnowledgeArticle.objects.filter(organization=self.request.organization).select_related(
             "category", "author", "reviewed_by", "source_ticket"

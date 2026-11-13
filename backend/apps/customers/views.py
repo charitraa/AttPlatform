@@ -56,6 +56,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
             .prefetch_related(Prefetch("contacts", queryset=CustomerContact.objects.filter(is_primary=True)))
         )
 
+    queryset = Customer.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         qs = self._annotated_queryset()
         if self.action == "list" and "archived" not in self.request.query_params:
@@ -115,6 +117,8 @@ class CustomerContactViewSet(viewsets.ModelViewSet):
 
     def get_customer(self) -> Customer:
         return get_object_or_404(Customer, pk=self.kwargs["customer_pk"], organization=self.request.organization)
+
+    queryset = CustomerContact.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return CustomerContact.objects.filter(customer=self.get_customer())

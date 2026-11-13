@@ -48,6 +48,8 @@ class RoleViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
     lookup_field = "code"
 
+    queryset = Role.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return Role.objects.filter(Q(organization__isnull=True) | Q(organization=self.request.organization))
 
@@ -83,6 +85,8 @@ class MemberViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
     search_fields = ("user__email", "user__first_name", "user__last_name")
     ordering_fields = ("created_at", "user__email", "user__first_name")
     ordering = ("user__first_name", "user__email")
+
+    queryset = Membership.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return Membership.objects.filter(organization=self.request.organization).select_related("user", "role")
@@ -138,6 +142,8 @@ class InvitationViewSet(
     filterset_class = InvitationFilter
     search_fields = ("email",)
 
+    queryset = Invitation.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return Invitation.objects.filter(organization=self.request.organization).select_related("role", "invited_by")
 
@@ -182,6 +188,8 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditLogSerializer
     filterset_class = AuditLogFilter
     ordering_fields = ("created_at",)
+
+    queryset = AuditLog.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return AuditLog.objects.filter(organization=self.request.organization).select_related("actor")

@@ -1,0 +1,112 @@
+# ATT Platform — production stack (single host).
+#
+#   cp .env.prod.example .env.prod   # fill in every value
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# See docs/deployment.md (TLS certificates, first admin user, backups, upgrades).
+
+name: att-prod
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-att-backend:prod}
+  build:
+    context: ./backend
+    target: prod
+  env_file: ${ENV_FILE:-.env.prod}
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    ENVIRONMENT: production
+    DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    CELERY_RESULT_BACKEND: redis://redis:6379/2
+    CHANNELS_REDIS_URL: redis://redis:6379/3
+    CACHE_URL: redis://redis:6379/4
+    MEDIA_ROOT: /app/media
+    NUM_PROXIES: "1"            # the web container sits in front of Django
+  volumes:
+    - media:/app/media
+  depends_on:
+    db: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  restart: always
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: always
+
+  # One-off: apply migrations (and sync roles/permissions) before the app starts.
+  migrate:
+    <<: *backend
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    restart: "no"
+
+  backend:
+    <<: *backend
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "default,ai,notifications,webhooks,sla",
+              "--concurrency", "${CELERY_CONCURRENCY:-4}"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 10 | grep -q pong"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "config", "beat", "-l", "info"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    image: ${WEB_IMAGE:-att-web:prod}
+    build:
+      context: .
+      dockerfile: infrastructure/web.Dockerfile
+    ports:
+      - "${WEB_HTTP_PORT:-80}:80"
+      - "${WEB_HTTPS_PORT:-443}:443"
+    volumes:
+      - ${CERTS_DIR:-./certs}:/etc/nginx/certs:ro
+      - ${ACME_WEBROOT:-./certbot}:/var/www/certbot:ro
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  pgdata:
+  redisdata:
+  media:

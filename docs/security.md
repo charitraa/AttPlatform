@@ -145,3 +145,14 @@ agent, request ID. No secrets or passwords in `changes`.
 - Containers run as non-root users; production images contain no dev tools.
 - `DEBUG=False` enforced by `prod` settings with startup checks
   (`manage.py check --deploy` in CI).
+
+## 11. Verification (Phase 8)
+
+- `manage.py check --deploy --settings=config.settings.prod`: no findings.
+- `core/tests/test_security_sweep.py`: every `/api/v1/` route refuses anonymous requests unless allowlisted
+  with a reason (health, meta, auth flows, signed inbound webhooks, API docs).
+- Tenant isolation: per-app tests (tickets, customers, field service, SLA, notifications, integrations, portal)
+  request other organizations' objects and expect 404.
+- Production edge (`infrastructure/nginx-prod/`): TLS 1.2/1.3, HSTS, strict CSP, frame denial, rate limits on
+  credential endpoints; `/media/` is never served directly.
+- Dependencies: `pip-audit -r requirements/prod.txt` and `pnpm audit --prod` before each release.

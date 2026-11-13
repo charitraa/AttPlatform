@@ -49,6 +49,8 @@ class BusinessHoursViewSet(_AuditedViewSet):
     serializer_class = BusinessHoursSerializer
     audit_prefix = "business_hours"
 
+    queryset = BusinessHours.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return BusinessHours.objects.filter(organization=self.request.organization).prefetch_related(
             "holidays", "policies"
@@ -72,6 +74,8 @@ class BusinessHoursViewSet(_AuditedViewSet):
 class SLAPolicyViewSet(_AuditedViewSet):
     serializer_class = SLAPolicySerializer
     audit_prefix = "sla_policy"
+
+    queryset = SLAPolicy.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return (

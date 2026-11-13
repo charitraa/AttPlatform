@@ -49,6 +49,8 @@ class AssetViewSet(viewsets.ModelViewSet):
     ordering_fields = ("name", "asset_tag", "installed_at", "warranty_expires_at", "created_at")
     ordering = ("name",)
 
+    queryset = Asset.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return (
             Asset.objects.filter(organization=self.request.organization)
@@ -85,6 +87,8 @@ class AssetCategoryViewSet(viewsets.ModelViewSet):
     method_permissions = PERMS
     serializer_class = AssetCategorySerializer
     pagination_class = None
+
+    queryset = AssetCategory.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return AssetCategory.objects.filter(organization=self.request.organization)

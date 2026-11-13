@@ -148,6 +148,8 @@ class TicketViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Cre
         codes = self.action_permissions.get(self.action)
         return [HasPermission(*codes, any_of=True)()] if codes else [IsOrganizationMember()]
 
+    queryset = Ticket.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         qs = selectors.with_detail_relations(selectors.visible_tickets(self.request.tenant)).select_related("sla")
         if self.action == "list":
@@ -322,6 +324,8 @@ class TicketCategoryViewSet(viewsets.ModelViewSet):
     }
     serializer_class = TicketCategorySerializer
     pagination_class = None
+
+    queryset = TicketCategory.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         qs = TicketCategory.objects.filter(organization=self.request.organization).select_related("parent")

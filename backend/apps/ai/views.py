@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -79,6 +80,8 @@ class AnalysisViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [HasPermission("ai.use")]
     serializer_class = AnalysisSerializer
 
+    queryset = AIAnalysis.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         tenant = self.request.tenant
         return AIAnalysis.objects.filter(organization=tenant.organization).filter(
@@ -91,6 +94,8 @@ class RecommendationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [HasPermission("ai.use")]
     serializer_class = RecommendationSerializer
     filterset_fields = ("status", "type", "ticket")
+
+    queryset = AIRecommendation.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         tenant = self.request.tenant
@@ -141,6 +146,8 @@ class InsightViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = InsightSerializer
     filterset_fields = ("type", "is_dismissed")
 
+    queryset = AIInsight.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return AIInsight.objects.filter(organization=self.request.organization).select_related("analysis")
 
@@ -169,7 +176,7 @@ class InsightViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         return Response(InsightSerializer(insight).data)
 
 
-@extend_schema(tags=["ai"])
+@extend_schema(tags=["ai"], responses=OpenApiTypes.OBJECT)
 class AIStatusView(APIView):
     """Which provider is active (never the key) and how often people accept AI suggestions."""
 

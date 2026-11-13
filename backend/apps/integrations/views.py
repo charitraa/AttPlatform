@@ -36,6 +36,8 @@ class IntegrationViewSet(viewsets.ModelViewSet):
     serializer_class = IntegrationSerializer
     pagination_class = None
 
+    queryset = Integration.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return Integration.objects.filter(organization=self.request.organization).prefetch_related("credentials")
 
@@ -174,6 +176,8 @@ class WebhookEndpointViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, 
     permission_classes = MANAGE
     serializer_class = WebhookEndpointSerializer
 
+    queryset = WebhookEndpoint.objects.none()  # for the API schema only; get_queryset() scopes every request
+
     def get_queryset(self):
         return WebhookEndpoint.objects.filter(integration__organization=self.request.organization)
 
@@ -204,6 +208,8 @@ class WebhookEndpointViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, 
 class WebhookDeliveryViewSet(viewsets.GenericViewSet):
     permission_classes = MANAGE
     serializer_class = WebhookDeliverySerializer
+
+    queryset = WebhookDelivery.objects.none()  # for the API schema only; get_queryset() scopes every request
 
     def get_queryset(self):
         return WebhookDelivery.objects.filter(endpoint__integration__organization=self.request.organization)
