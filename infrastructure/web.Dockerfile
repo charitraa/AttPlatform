@@ -10,6 +10,8 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ .
 ARG VITE_API_BASE_URL=/api/v1
 ARG VITE_WS_URL=
+# Shown as "Request a demo" on the landing page (hidden when empty)
+ARG VITE_CONTACT_EMAIL=
 RUN pnpm build
 
 FROM nginx:1.27-alpine

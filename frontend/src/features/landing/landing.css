@@ -1,0 +1,177 @@
+/* Landing page. Scoped under .lp so nothing leaks into the app. Light "paper" theme on purpose:
+   the page is built around the carbon-copy work order that field teams know. */
+
+.lp {
+  --ink: #1d2b4f;          /* form ink: text, rules, primary actions */
+  --ink-soft: #4a5878;     /* secondary text */
+  --paper: #fbfbf7;        /* page and the white top copy */
+  --carbon: #f2d5da;       /* pink carbon copy under the slip */
+  --duplicate: #f5eab5;    /* yellow duplicate: highlights */
+  --stamp: #c3312a;        /* only for "signed off" */
+  --rule: #d6d9e2;
+  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --body: 'Geist Variable', system-ui, sans-serif;
+
+  min-height: 100svh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.lp a { color: inherit; }
+.lp p, .lp dd { text-wrap: pretty; }  /* no single-word last lines */
+.lp :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
+
+.lp-wrap { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
+
+/* ---- header ------------------------------------------------------------------ */
+.lp-header { display: flex; align-items: center; gap: 2rem; padding-block: 1.25rem; }
+.lp-brand { display: flex; align-items: center; gap: .6rem; text-decoration: none; font-weight: 600; }
+.lp-mark {
+  display: grid; place-items: center; width: 2.1rem; height: 2.1rem; border-radius: .45rem;
+  background: var(--ink); color: var(--paper); font-family: var(--display); font-weight: 700; font-size: 1.05rem;
+  letter-spacing: .02em;
+}
+.lp-nav { display: flex; gap: 1.5rem; margin-left: auto; align-items: center; font-size: .95rem; }
+.lp-nav a { text-decoration: none; color: var(--ink-soft); }
+.lp-nav a:hover { color: var(--ink); }
+@media (max-width: 40rem) { .lp-nav .lp-hide-sm { display: none; } }
+
+/* ---- buttons ------------------------------------------------------------------ */
+.lp-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  min-height: 2.9rem; padding: 0 1.3rem; border-radius: .5rem; border: 2px solid var(--ink);
+  font: 600 1rem/1 var(--body); text-decoration: none; cursor: pointer;
+}
+.lp-btn-solid { background: var(--ink); color: var(--paper) !important; }
+.lp-btn-solid:hover { background: #2a3c68; border-color: #2a3c68; }
+.lp-btn-line { background: transparent; color: var(--ink); }
+.lp-btn-line:hover { background: var(--duplicate); }
+.lp-btn-small { min-height: 2.4rem; padding: 0 1rem; font-size: .95rem; }
+
+/* ---- hero ------------------------------------------------------------------------ */
+.lp-hero {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center; padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(3rem, 8vw, 6rem);
+}
+@media (max-width: 56rem) { .lp-hero { grid-template-columns: 1fr; } }
+
+.lp-h1 {
+  font-family: var(--display); font-weight: 700; text-transform: none;
+  font-size: clamp(2.9rem, 6.4vw, 5.1rem); line-height: .95; letter-spacing: -.01em; margin: 0 0 1.4rem;
+  max-width: 15ch; text-wrap: balance;
+}
+.lp-lede { font-size: 1.15rem; color: var(--ink-soft); max-width: 36rem; margin: 0 0 2rem; }
+.lp-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+
+/* ---- the work-order slip -------------------------------------------------------- */
+.lp-slip-stack { position: relative; max-width: 30rem; width: 100%; justify-self: end; }
+@media (max-width: 56rem) { .lp-slip-stack { justify-self: start; } }
+.lp-slip-stack::before {          /* the pink carbon copy peeking out underneath */
+  content: ""; position: absolute; inset: 0; transform: translate(14px, 14px) rotate(1.4deg);
+  background: var(--carbon); border-radius: 6px; border: 1px solid #e3bcc4;
+}
+.lp-slip {
+  position: relative; background: #fff; border: 1px solid var(--rule); border-radius: 6px;
+  padding: 1.4rem 1.5rem 1.6rem; box-shadow: 0 1px 0 var(--rule);
+  background-image: repeating-linear-gradient(transparent 0 2.15rem, #eef0f5 2.15rem calc(2.15rem + 1px));
+  background-position: 0 4.6rem;
+}
+.lp-slip-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--ink); padding-bottom: .55rem; margin-bottom: .9rem; }
+.lp-slip-title { font-family: var(--display); font-weight: 700; font-size: 1.5rem; letter-spacing: .01em; }
+.lp-slip-ref { font-family: var(--display); font-weight: 600; font-size: 1.15rem; color: var(--ink-soft); }
+.lp-field { display: grid; grid-template-columns: 6.2rem 1fr; gap: .75rem; font-size: .95rem; line-height: 2.15rem; }
+.lp-field dt { color: var(--ink-soft); }
+.lp-field dd { margin: 0; font-weight: 500; }
+.lp-steps { list-style: none; margin: 1rem 0 0; padding: 0; border-top: 1px dashed var(--rule); padding-top: .6rem; }
+.lp-step { display: grid; grid-template-columns: 1.6rem 6.2rem 1fr; gap: .4rem; align-items: center; font-size: .93rem; line-height: 2.15rem; }
+.lp-tick {
+  width: 1.05rem; height: 1.05rem; border: 2px solid var(--ink); border-radius: 3px; display: grid; place-items: center;
+}
+.lp-tick svg { width: .75rem; height: .75rem; opacity: 0; }
+.lp-step-name { font-weight: 600; }
+.lp-step-note { color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-sla { margin-top: 1rem; font-size: .85rem; color: var(--ink-soft); }
+.lp-sla-bar { height: .45rem; border-radius: 99px; background: #e9ecf3; overflow: hidden; margin-top: .35rem; }
+.lp-sla-fill { height: 100%; width: 46%; background: var(--ink); border-radius: inherit; }
+
+.lp-stamp {
+  position: absolute; right: 1.2rem; bottom: 4.2rem; padding: .35rem .8rem .25rem;
+  border: 3px solid var(--stamp); border-radius: 6px; color: var(--stamp);
+  font-family: var(--display); font-weight: 700; font-size: 1.55rem; line-height: 1; letter-spacing: .04em;
+  transform: rotate(-9deg); background: rgb(255 255 255 / .55); mix-blend-mode: multiply;
+}
+.lp-stamp small { display: block; font-size: .7rem; letter-spacing: .02em; font-weight: 600; text-align: center; margin-top: .15rem; }
+
+/* The slip's one orchestrated moment: steps tick in order, the clock runs, the stamp lands. */
+.lp-step .lp-tick svg { opacity: 1; }
+@media (prefers-reduced-motion: no-preference) {
+  .lp-animate .lp-step { opacity: .35; animation: lp-step-in .35s ease-out forwards; animation-delay: calc(.5s + var(--i) * .75s); }
+  .lp-animate .lp-step .lp-tick svg { opacity: 0; animation: lp-tick .25s ease-out forwards; animation-delay: calc(.6s + var(--i) * .75s); }
+  .lp-animate .lp-sla-fill { width: 0; animation: lp-fill 4.2s cubic-bezier(.4, .1, .3, 1) .4s forwards; }
+  .lp-animate .lp-stamp { opacity: 0; animation: lp-stamp .45s cubic-bezier(.2, 1.6, .4, 1) 4.4s forwards; }
+}
+@keyframes lp-step-in { to { opacity: 1; } }
+@keyframes lp-tick { to { opacity: 1; } }
+@keyframes lp-fill { to { width: 46%; } }
+@keyframes lp-stamp { from { opacity: 0; transform: rotate(-9deg) scale(1.9); } to { opacity: 1; transform: rotate(-9deg) scale(1); } }
+
+/* ---- sections -------------------------------------------------------------------- */
+.lp-section { padding-block: clamp(3rem, 8vw, 5.5rem); border-top: 1px solid var(--rule); }
+.lp-h2 {
+  font-family: var(--display); font-weight: 700; font-size: clamp(2.1rem, 4.2vw, 3.1rem); line-height: 1;
+  margin: 0 0 .9rem; max-width: 22ch; text-wrap: balance;
+}
+.lp-section-intro { color: var(--ink-soft); max-width: 40rem; margin: 0 0 2.5rem; }
+
+/* The journey is a real sequence, so it is numbered; the line between numbers is the job moving along. */
+.lp-journey { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.5rem; counter-reset: step; }
+@media (max-width: 62rem) { .lp-journey { grid-template-columns: 1fr; gap: 0; } }
+.lp-journey li { position: relative; counter-increment: step; padding-top: 3.3rem; }
+.lp-journey li::before {
+  content: counter(step); position: absolute; top: 0; left: 0; width: 2.4rem; height: 2.4rem; border-radius: 50%;
+  border: 2px solid var(--ink); display: grid; place-items: center; background: var(--paper);
+  font-family: var(--display); font-weight: 700; font-size: 1.3rem; z-index: 1;
+}
+.lp-journey li::after { content: ""; position: absolute; top: 1.2rem; left: 2.4rem; right: -1.5rem; border-top: 2px dashed var(--rule); }
+.lp-journey li:last-child::after { display: none; }
+.lp-journey li:last-child::before { background: var(--stamp); border-color: var(--stamp); color: #fff; }
+@media (max-width: 62rem) {
+  .lp-journey li { padding: 0 0 2rem 3.6rem; }
+  .lp-journey li::after { top: 2.4rem; bottom: 0; left: 1.2rem; right: auto; border-top: 0; border-left: 2px dashed var(--rule); }
+}
+.lp-journey h3 { font-size: 1.05rem; margin: 0 0 .35rem; text-wrap: balance; }
+.lp-journey p { margin: 0; color: var(--ink-soft); font-size: .97rem; }
+
+/* Roles: a plain two-column list, not cards. */
+.lp-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3.5rem; margin: 0; }
+@media (max-width: 48rem) { .lp-roles { grid-template-columns: 1fr; } }
+.lp-role { padding-block: 1.15rem; border-bottom: 1px solid var(--rule); }
+.lp-role dt { font-weight: 600; margin-bottom: .2rem; }
+.lp-role dd { margin: 0; color: var(--ink-soft); font-size: .97rem; }
+
+/* Local fit: the yellow duplicate copy as the one tinted band on the page. */
+.lp-local { background: var(--duplicate); border-top: 0; }
+.lp-local .lp-section-intro, .lp-local p { color: #4b4a35; }
+.lp-local-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2.25rem 3rem; }
+@media (max-width: 56rem) { .lp-local-grid { grid-template-columns: 1fr; } }
+.lp-local-grid h3 { font-family: var(--display); font-weight: 700; font-size: 1.45rem; margin: 0 0 .35rem; line-height: 1.05; }
+.lp-local-grid p { margin: 0; font-size: .97rem; }
+
+.lp-close { text-align: left; }
+.lp-close .lp-h2 { max-width: 22ch; }
+
+.lp-footer { padding-block: 2rem 2.5rem; border-top: 1px solid var(--rule); color: var(--ink-soft); font-size: .9rem; display: flex; flex-wrap: wrap; gap: 1rem 2rem; }
+.lp-footer a { color: var(--ink-soft); }
+
+/* Narrow phones: tighter label column, and the stamp moves beside the SLA bar so it covers no text. */
+@media (max-width: 30rem) {
+  .lp-slip { padding: 1.1rem 1rem 1.3rem; }
+  .lp-field { grid-template-columns: 4.8rem 1fr; font-size: .9rem; }
+  .lp-step { grid-template-columns: 1.4rem 4.8rem 1fr; font-size: .88rem; }
+  .lp-sla { padding-right: 6.5rem; }
+  .lp-stamp { right: .8rem; bottom: .9rem; font-size: 1.15rem; border-width: 2px; padding: .25rem .55rem .2rem; }
+  .lp-stamp small { font-size: .6rem; }
+}

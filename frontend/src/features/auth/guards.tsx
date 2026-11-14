@@ -26,6 +26,7 @@ export function RequireAuth() {
 
   if (status === 'idle' || status === 'loading') return <FullPageLoader />
   if (status === 'anonymous') {
+    if (location.pathname === '/' && !location.search) return <Navigate to="/welcome" replace />  // visitors see the landing page
     const next = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/login?next=${next}`} replace />
   }

@@ -12,6 +12,7 @@ import { RouteErrorPage } from '@/pages/route-error-page'
 const named = <T extends Record<string, unknown>>(loader: () => Promise<T>, name: keyof T) =>
   lazy(async () => ({ default: (await loader())[name] as React.ComponentType }))
 
+const LandingPage = named(() => import('@/features/landing/landing-page'), 'LandingPage')
 const LoginPage = named(() => import('@/features/auth/login-page'), 'LoginPage')
 const ForgotPasswordPage = named(() => import('@/features/auth/forgot-password-page'), 'ForgotPasswordPage')
 const ResetPasswordPage = named(() => import('@/features/auth/reset-password-page'), 'ResetPasswordPage')
@@ -79,6 +80,7 @@ export const routes: RouteObject[] = [
       {
         element: <RedirectIfAuthenticated />,
         children: [
+          { path: '/welcome', element: page(<LandingPage />) },
           { path: '/login', element: page(<LoginPage />) },
           { path: '/forgot-password', element: page(<ForgotPasswordPage />) },
         ],
