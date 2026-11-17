@@ -1,0 +1,13 @@
+{
+  "name": "att-platform-e2e",
+  "private": true,
+  "description": "Real-browser end-to-end tests against a running ATT Platform (see README.md).",
+  "scripts": {
+    "test": "playwright test",
+    "test:fast": "playwright test --grep-invert @ai",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

@@ -296,3 +296,29 @@ def test_whatsapp_needs_a_phone_and_does_not_retry_recipient_errors(team, org, d
         assert deliver_message.run(str(d.id)) == "failed"
     d.refresh_from_db()
     assert d.attempts == 1 and "131030" in d.last_error
+
+
+def test_customers_get_live_updates_for_public_replies_only(
+    client_for, team, ticket, org, make_member, monkeypatch, django_capture_on_commit_callbacks
+):
+    from apps.notifications import realtime
+
+    cust = make_member(org, RoleCode.CUSTOMER, email="cara@bank.test")
+    team["customer"].contacts.create(name="Cara", email="cara@bank.test", user=cust.user)
+    pushed = []
+    monkeypatch.setattr(realtime, "push", lambda group, event, **data: pushed.append((group, data.get("change"))))
+    customer_group = realtime.user_group(cust.user.pk, org.pk)
+    staff = client_for(team["ops"])
+
+    def comment(visibility):
+        pushed.clear()
+        with django_capture_on_commit_callbacks(execute=True):
+            r = staff.post(
+                f"/api/v1/tickets/{ticket.id}/comments/", {"body": "x", "visibility": visibility}, format="json"
+            )
+        assert r.status_code == 201, r.json()
+        return [g for g, _ in pushed]
+
+    assert customer_group not in comment("internal")  # internal activity stays invisible
+    assert customer_group in comment("public")
+    assert realtime.staff_group(org.pk) in [g for g, _ in pushed]  # staff still get theirs

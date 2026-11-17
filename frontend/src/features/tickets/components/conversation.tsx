@@ -50,8 +50,10 @@ function Composer({ ticket }: { ticket: Ticket }) {
 
   const send = async () => {
     try {
-      await add.mutateAsync({ body, visibility })
-      setBody('')
+      const sent = body
+      await add.mutateAsync({ body: sent, visibility })
+      // Only clear what was sent: anything typed while it was in flight is kept.
+      setBody((current) => (current === sent ? '' : current))
       setDraftFromAI(null)
       toast.success(internal ? 'Internal note added' : 'Reply sent')
     } catch (e) {

@@ -665,3 +665,26 @@ operation IDs). The published Swagger/ReDoc docs now carry real types.
   twice, dispatch without a suitable technician, truthful reply facts), 106 frontend.
 - Not done: AI replies to tickets that arrived by email are visible in the portal but not emailed back
   to the sender.
+
+## Follow-up: real-browser tests (2026-11-17)
+
+- New `e2e/` Playwright suite (16 tests, Chromium, desktop and Pixel 7) against the running stack through
+  nginx: landing page, sign-in/out for every role, wrong password, customer ↔ staff conversation in two
+  live browsers, staff-URL protection for customers, every admin page with no errors or 5xx, system
+  status, CSV export, technician phone view, and the AI autopilot end to end with the real model.
+  Result: **16/16 passed** (AI test 48 s). See `e2e/README.md`.
+- Bugs the browser tests found and fixed:
+  1. **Live updates from background workers never arrived.** redis-py 8's read timeout cut off the
+     channel layer's blocking reads ("Timeout reading from redis", 150+/hour), so AI autopilot changes
+     didn't appear until a reload. Fixed with `socket_timeout: 30` on the channel layer.
+  2. **Customers never got live updates.** Public replies and status changes are now pushed to the
+     customer's own channel (internal notes are not), and the portal refreshes on them.
+  3. **Customers could open staff ticket screens by URL** (assignees, SLA deadlines, escalations).
+     They're now redirected to the portal equivalents; Organization settings are hidden from them.
+  4. **Typed text could be wiped** when the previous message finished sending (staff and portal).
+  5. AI replies: shown as "Automated assistant" (not "Support · Support"); no "(No knowledge articles
+     were referenced)" notes or "[Support Agent]" placeholders (prompt `response-v4` plus a filter).
+  6. Staff couldn't see a ticket's work orders: new Work orders card on the ticket page.
+- New `manage.py archive_test_tickets --org acme`: quietly archives `[E2E` test tickets, cancels their
+  work orders and stops their SLA alerts.
+- Totals: 409 backend tests, 110 frontend tests, 16 browser tests.

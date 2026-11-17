@@ -17,6 +17,7 @@ Policies (Organization.settings):
 from __future__ import annotations
 
 import logging
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -711,7 +712,7 @@ def _autopilot_reply(ticket: Ticket, actions_taken: list[str] | None = None) -> 
     draft = (analysis.output or {}).get("draft", "") if analysis.status == AIAnalysis.Status.COMPLETED else ""
     if not draft.strip():
         return f"skipped: no draft ({analysis.error or analysis.status})"
-    comment = ticket_services.post_ai_reply(ticket=ticket, body=draft)
+    comment = ticket_services.post_ai_reply(ticket=ticket, body=_strip_meta_notes(draft))
     return "sent" if comment else "skipped: ticket closed"
 
 
@@ -728,3 +729,17 @@ def _autopilot_dispatch(ticket: Ticket) -> str:
     except (DomainError, exceptions.ValidationError) as exc:
         return f"skipped: {exc}"
     return f"dispatched {wo.reference} to {wo.technician}" if wo else "skipped: no suitable technician free"
+
+
+_META_NOTE = re.compile(
+    r"^\s*(?:\([^\n]*\b(?:articles?|sources?|references?|citations?)\b[^\n]*\)"  # "(No articles were used.)"
+    r"|(?:sources?|references?|citations?|knowledge articles?(?: used| referenced)?)\s*:[^\n]*"  # "Sources: …"
+    r"|no (?:knowledge )?articles? (?:were |was )?(?:used|referenced|cited)[^\n]*"
+    r"|\[[^\]\n]{1,40}\])\s*$",  # a template placeholder left on its own line: "[Support Agent]"
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _strip_meta_notes(draft: str) -> str:
+    """Drop lines where the model talks about its sources, and template placeholders like "[Your Name]"."""
+    return re.sub(r"\n{3,}", "\n\n", _META_NOTE.sub("", draft)).strip()

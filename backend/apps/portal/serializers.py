@@ -98,7 +98,7 @@ class PortalCommentSerializer(serializers.ModelSerializer):
 
     def get_author(self, obj) -> str:
         if obj.author_id is None:
-            return "Support"
+            return "Automated assistant" if obj.source == TicketComment.Source.AI_AUTO else "Support"
         return obj.author.first_name if self.get_from_support(obj) else (obj.author.full_name or "You")
 
     def get_from_support(self, obj) -> bool:

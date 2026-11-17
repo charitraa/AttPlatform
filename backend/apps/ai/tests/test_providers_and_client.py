@@ -356,7 +356,7 @@ def test_reply_prompt_greets_by_name_or_neutrally():
     assert "Address the customer contact as: Sita Rai" in named
     anonymous = build_prompt("response_suggestion", {**base, "contact_name": ""})
     assert "neutral greeting" in anonymous and "as: the customer" not in anonymous
-    assert SPECS["response_suggestion"].version == "response-v3"
+    assert SPECS["response_suggestion"].version == "response-v4"
 
 
 # ---------------------------------------------------------------- fallbacks

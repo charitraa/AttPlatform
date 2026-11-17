@@ -68,7 +68,7 @@ export const navigation: NavGroup[] = [
       { label: 'Notifications', to: '/notifications', icon: Bell, phase: 6, summary: 'In-app, email and real-time notifications.' },
       { label: 'Integrations', to: '/integrations', icon: Plug, phase: 7, summary: 'Email, SMS, WhatsApp, webhooks and external systems.', permissions: ['integrations.manage'] },
       { label: 'Users', to: '/settings/users', icon: Users, phase: 2, summary: 'Users, roles and invitations.', permissions: ['users.view'] },
-      { label: 'Organization', to: '/settings/organization', icon: UserCog, phase: 2, summary: 'Organization profile and platform settings.', permissions: ['organization.view'] },
+      { label: 'Organization', to: '/settings/organization', icon: UserCog, phase: 2, summary: 'Organization profile and platform settings.', permissions: ['organization.view'], hiddenFor: ['portal.access'] },
       { label: 'System status', to: '/system', icon: Activity, phase: 1, summary: 'Live health of the API, database, Redis and WebSocket.', hiddenFor: ['portal.access'] },
     ],
   },

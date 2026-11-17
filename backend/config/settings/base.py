@@ -249,7 +249,12 @@ CORS_ALLOW_HEADERS = (*default_headers, "x-request-id", "x-organization")
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [env("CHANNELS_REDIS_URL", default=REDIS_URL)]},
+        "CONFIG": {
+            # The layer waits on Redis in 5 s blocking reads; redis-py 8's default read timeout cut those
+            # off ("Timeout reading from redis"), so pushes from Celery workers never reached sockets.
+            # Keep the read timeout well above the blocking read.
+            "hosts": [{"address": env("CHANNELS_REDIS_URL", default=REDIS_URL), "socket_timeout": 30}],
+        },
     }
 }
 

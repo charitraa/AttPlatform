@@ -84,24 +84,6 @@ describe('Create ticket', () => {
     })
     expect(body).not.toHaveProperty('priority') // left to the category default
   })
-
-  it('lets portal customers report an issue without choosing a customer or priority', async () => {
-    const user = userEvent.setup()
-    let body: Record<string, unknown> = {}
-    server.use(http.post(`${API}/tickets/`, async ({ request }) => {
-      body = (await request.json()) as Record<string, unknown>
-      return HttpResponse.json(makeTicket(), { status: 201 })
-    }))
-    renderRoute('/tickets/new', { user: makeMe('customer') })
-    await user.type(await screen.findByLabelText('Title'), 'Printer broken')
-    await user.type(screen.getByLabelText('Description'), 'Paper jams on every print.')
-    expect(screen.queryByLabelText('Customer')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Create ticket' }))
-    await waitFor(() => expect(body.title).toBe('Printer broken'))
-    expect(body).not.toHaveProperty('customer')
-    expect(body).not.toHaveProperty('priority')
-  })
 })
 
 describe('Ticket detail', () => {
@@ -165,23 +147,6 @@ describe('Ticket detail', () => {
     expect(body).toMatchObject({ status: 'resolved', resolution_notes: 'Replaced capacitor' })
   })
 
-  it('hides staff tools from customers and offers to confirm a resolution', async () => {
-    server.use(
-      http.get(`${API}/tickets/t-1/`, () => HttpResponse.json(makeTicket({
-        status: 'resolved', resolution_notes: 'Fixed', allowed_transitions: ['closed', 'reopened'],
-        capabilities: { edit: false, assign: false, archive: false, internal_notes: false, comment: true },
-      }))),
-      http.get(`${API}/tickets/t-1/comments/`, () => HttpResponse.json([comments[1]])),
-    )
-    renderRoute('/tickets/t-1', { user: makeMe('customer') })
-    await waitForTicketHeading()
-    await userEvent.click(await screen.findByRole('button', { name: /change status/i }))
-    expect(await screen.findByRole('menuitem', { name: 'Confirm resolution' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /assign/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /edit/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: 'Internal note' })).not.toBeInTheDocument()
-  })
-
   it('reports a missing or inaccessible ticket', async () => {
     server.use(http.get(`${API}/tickets/t-1/`, () => error(404, 'not_found', 'Not found.')))
     renderRoute('/tickets/t-1', { user: makeMe() })
@@ -189,6 +154,27 @@ describe('Ticket detail', () => {
   })
 })
 
-async function waitForTicketHeading() {
-  await screen.findByRole('heading', { name: 'AC not cooling' })
-}
+describe('Reply box', () => {
+  it('keeps text typed while the previous message was still sending', async () => {
+    const user = userEvent.setup()
+    let release: () => void = () => {}
+    server.use(
+      http.get(`${API}/tickets/t-1/`, () => HttpResponse.json(makeTicket())),
+      http.get(`${API}/tickets/t-1/comments/`, () => HttpResponse.json([])),
+      http.post(`${API}/tickets/t-1/comments/`, async () => {
+        await new Promise<void>((r) => { release = r })
+        return HttpResponse.json({ id: 'c9', author: null, body: 'first', visibility: 'internal', source: 'staff', attachments: [], created_at: '2026-11-10T10:00:00Z' }, { status: 201 })
+      }),
+    )
+    renderRoute('/tickets/t-1', { user: makeMe() })
+    const box = await screen.findByLabelText('Reply')
+    await user.type(box, 'first')
+    await user.click(screen.getByRole('button', { name: 'Send reply' }))
+    await waitFor(() => expect(release).not.toBe(undefined))
+    await user.clear(box)
+    await user.type(box, 'second, typed meanwhile')
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: /send reply/i })).toBeEnabled())
+    expect(box).toHaveValue('second, typed meanwhile')
+  })
+})

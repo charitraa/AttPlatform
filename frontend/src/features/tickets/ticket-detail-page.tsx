@@ -17,6 +17,7 @@ import { AttachmentsPanel } from './components/attachments-panel'
 import { PriorityLabel, StatusBadge } from './components/badges'
 import { Conversation } from './components/conversation'
 import { TicketActions } from './components/ticket-actions'
+import { TicketWorkOrders } from './components/ticket-work-orders'
 import { Timeline } from './components/timeline'
 import { CHANNEL_LABEL } from './constants'
 
@@ -36,6 +37,7 @@ export function TicketDetailPage() {
   const ticket = useTicket(id)
   const canSeeCustomers = useCan('customers.view')
   const canSeeSLA = useCan('sla.view')
+  const canSeeWorkOrders = useCan('work_orders.view_all')
 
   if (ticket.isPending) {
     return <div className="space-y-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-48" /><Skeleton className="h-32" /></div>
@@ -92,6 +94,7 @@ export function TicketDetailPage() {
 
         <aside className="space-y-6">
           {canSeeSLA && <TicketSLAPanel ticketId={t.id} />}
+          {canSeeWorkOrders && <TicketWorkOrders ticketId={t.id} />}
           <AIPanel ticketId={t.id} closed={t.status === 'closed' || !!t.archived_at} />
           <Card>
             <CardHeader><CardTitle>Details</CardTitle></CardHeader>

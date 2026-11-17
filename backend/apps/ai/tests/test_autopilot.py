@@ -145,3 +145,17 @@ def test_reply_only_states_what_was_actually_done(org, world, client_for, django
     t2 = raise_ticket(client_for, world["customer"], django_capture_on_commit_callbacks)
     facts2 = AIAnalysis.objects.get(ticket=t2, kind="response_suggestion").input["actions_taken"]
     assert not any("Technician" in f or "assigned to" in f for f in facts2)
+
+
+def test_meta_notes_about_sources_are_not_sent_to_customers():
+    from apps.ai.services import _strip_meta_notes
+
+    draft = (
+        "Hi Cara,\n\nA technician is on the way.\n\nBest regards,\nSupport Team\n\n"
+        "(No knowledge articles were referenced for this reply.)"
+    )
+    assert _strip_meta_notes(draft) == "Hi Cara,\n\nA technician is on the way.\n\nBest regards,\nSupport Team"
+    assert _strip_meta_notes("Sources: KB-12, KB-40\nHello") == "Hello"
+    assert _strip_meta_notes("Best regards,\n[Support Agent]") == "Best regards,"
+    for keep in ("Our knowledge article on defrosting explains the steps below.", "Please keep the door closed."):
+        assert _strip_meta_notes(keep) == keep

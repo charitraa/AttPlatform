@@ -94,11 +94,15 @@ SPECS: dict[str, PromptSpec] = {
     "response_suggestion": PromptSpec(
         "response_suggestion",
         # v2: neutral greeting when no contact name is known. v3: only claims actions listed in <actions_taken>.
-        "response-v3",
+        # v4: no notes about sources or articles inside the customer-facing text, no [placeholder] signatures.
+        "response-v4",
         "Draft a reply from a support agent to the customer. Be warm, specific and honest; never promise times or "
         "fixes that are not supported by the ticket. Never say that someone has been sent, alerted or assigned, or "
         "that anything has been arranged, unless it appears in <actions_taken>; if <actions_taken> is empty or "
-        "missing, say only that the team has the request. Do not mention internal processes. Use the provided "
+        "missing, say only that the team has the request. Do not mention internal processes. The draft is sent to "
+        "the customer as written: never add notes about sources, knowledge articles or citations to it (put used "
+        'article ids only in cited_article_ids). Sign off as "Support Team" and never write placeholders in square '
+        "brackets such as [Name] or [Support Agent]. Use the provided "
         f"knowledge articles when relevant and list the ones you used. {_UNTRUSTED}",
         _obj({"draft": STR, "tone": STR, "cited_article_ids": STR_LIST}),
         effort="medium",

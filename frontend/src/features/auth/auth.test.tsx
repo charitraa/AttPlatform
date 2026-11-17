@@ -184,3 +184,15 @@ describe('accept invitation', () => {
     expect(await screen.findByRole('heading', { name: 'Invitation unavailable' })).toBeInTheDocument()
   })
 })
+
+describe('Customers on staff pages', () => {
+  it.each([
+    ['/tickets', '/portal'],
+    ['/tickets/new', '/portal/new'],
+    ['/tickets/abc-123', '/portal/tickets/abc-123'],
+    ['/settings/organization', '/portal'],
+  ])('sends a customer from %s to %s', async (from, to) => {
+    const { router } = renderRoute(from, { user: makeMe('customer') })
+    await waitFor(() => expect(router.state.location.pathname).toBe(to))
+  })
+})

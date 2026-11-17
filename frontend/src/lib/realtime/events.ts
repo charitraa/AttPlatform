@@ -32,6 +32,7 @@ export function applyStreamMessage(qc: QueryClient, msg: StreamMessage, onNotifi
     case 'ticket.changed':
       void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'tickets' && q.queryKey[1] !== 'categories' })
       void qc.invalidateQueries({ queryKey: ['dashboard'] })
+      void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'portal' && q.queryKey[1] !== 'options' })
       break
     case 'sla.changed':
       void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'tickets' && q.queryKey[1] !== 'categories' })

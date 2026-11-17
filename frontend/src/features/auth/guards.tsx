@@ -1,6 +1,6 @@
 import { ShieldX } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
-import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
+import { Navigate, Outlet, useLocation, useParams, useSearchParams, type Params } from 'react-router-dom'
 import { EmptyState } from '@/components/common/states'
 import { Skeleton } from '@/components/ui/skeleton'
 import { hasAnyPermission, useAuthStore } from '@/stores/auth'
@@ -62,5 +62,16 @@ export function RequirePermission({ anyOf, children }: { anyOf?: string[]; child
       />
     )
   }
+  return <>{children}</>
+}
+
+/**
+ * Staff screens show operational detail (assignees, SLA deadlines, escalations). Customers who
+ * reach one by URL are sent to the portal equivalent instead. UX only: the API enforces access.
+ */
+export function StaffOnly({ portalTo, children }: { portalTo: string | ((params: Params) => string); children: ReactNode }) {
+  const isCustomer = useAuthStore((s) => hasAnyPermission(s.user, ['portal.access']))
+  const params = useParams()
+  if (isCustomer) return <Navigate to={typeof portalTo === 'function' ? portalTo(params) : portalTo} replace />
   return <>{children}</>
 }

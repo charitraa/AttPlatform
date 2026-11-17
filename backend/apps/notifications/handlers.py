@@ -62,6 +62,14 @@ def push_ticket_change(event: events.Event) -> None:
         realtime.push(
             realtime.user_group(ticket.assigned_technician_id, ticket.organization_id), "ticket.changed", **data
         )
+    # Customers watching the portal: only changes they can see (public replies, status), never
+    # internal notes or staff-side edits, so even the timing of internal activity stays private.
+    customer_visible = event.name == "ticket.status_changed" or (
+        event.name == "ticket.commented" and p.get("visibility") == "public" and not p.get("by_customer")
+    )
+    if ticket and customer_visible:
+        for user_id in ticket.customer.contacts.filter(user__isnull=False).values_list("user_id", flat=True):
+            realtime.push(realtime.user_group(user_id, ticket.organization_id), "ticket.changed", **data)
 
 
 @events.subscribe("work_order.created", on_commit=True)

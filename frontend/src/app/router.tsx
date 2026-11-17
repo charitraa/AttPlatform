@@ -3,7 +3,7 @@ import { createBrowserRouter, type RouteObject } from 'react-router-dom'
 import { AppShell } from '@/components/layout/app-shell'
 import { PageFallback } from '@/components/common/page-fallback'
 import { allNavItems } from '@/config/navigation'
-import { RedirectIfAuthenticated, RequireAuth, RequirePermission } from '@/features/auth/guards'
+import { RedirectIfAuthenticated, RequireAuth, RequirePermission, StaffOnly } from '@/features/auth/guards'
 import { ModulePage } from '@/pages/module-page'
 import { NotFoundPage } from '@/pages/not-found-page'
 import { RouteErrorPage } from '@/pages/route-error-page'
@@ -97,7 +97,11 @@ export const routes: RouteObject[] = [
             children: [
               ...allNavItems.map((item) => ({
                 ...(item.to === '/' ? { index: true } : { path: item.to.slice(1) }),
-                element: (
+                element: item.hiddenFor?.includes('portal.access') ? (
+                  <StaffOnly portalTo="/portal">
+                    <RequirePermission anyOf={item.permissions}>{page(implemented[item.to] ?? <ModulePage item={item} />)}</RequirePermission>
+                  </StaffOnly>
+                ) : (
                   <RequirePermission anyOf={item.permissions}>
                     {page(implemented[item.to] ?? <ModulePage item={item} />)}
                   </RequirePermission>
@@ -106,7 +110,7 @@ export const routes: RouteObject[] = [
               { path: 'settings/profile', element: page(<ProfileSettingsPage />) },
               {
                 path: 'tickets/:id',
-                element: <RequirePermission anyOf={['tickets.view_all', 'tickets.view_own']}>{page(<TicketDetailPage />)}</RequirePermission>,
+                element: <StaffOnly portalTo={(p) => `/portal/tickets/${p.id}`}><RequirePermission anyOf={['tickets.view_all', 'tickets.view_own']}>{page(<TicketDetailPage />)}</RequirePermission></StaffOnly>,
               },
               {
                 path: 'customers/:id',
@@ -134,7 +138,7 @@ export const routes: RouteObject[] = [
               },
               {
                 path: 'tickets/new',
-                element: <RequirePermission anyOf={['tickets.create']}>{page(<CreateTicketPage />)}</RequirePermission>,
+                element: <StaffOnly portalTo="/portal/new"><RequirePermission anyOf={['tickets.create']}>{page(<CreateTicketPage />)}</RequirePermission></StaffOnly>,
               },
               { path: '*', element: <NotFoundPage /> },
             ],

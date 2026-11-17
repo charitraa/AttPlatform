@@ -90,7 +90,7 @@ function Conversation({ t }: { t: PortalTicket }) {
             <li key={c.id} className={cn('flex', c.from_support ? 'justify-start' : 'justify-end')}>
               <div className={cn('max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm', c.from_support ? 'rounded-tl-sm bg-muted' : 'rounded-tr-sm bg-primary text-primary-foreground')}>
                 <p className={cn('mb-0.5 text-xs font-medium', c.from_support ? 'text-muted-foreground' : 'text-primary-foreground/80')}>
-                  {c.from_support ? `${c.author} · Support` : 'You'} · <time dateTime={c.created_at} title={formatDateTime(c.created_at)}>{formatRelative(c.created_at)}</time>
+                  {c.from_support ? (c.author === 'Support' || c.author === 'Automated assistant' ? c.author : `${c.author} · Support`) : 'You'} · <time dateTime={c.created_at} title={formatDateTime(c.created_at)}>{formatRelative(c.created_at)}</time>
                 </p>
                 <p className="whitespace-pre-wrap break-words">{c.body}</p>
               </div>
@@ -101,7 +101,8 @@ function Conversation({ t }: { t: PortalTicket }) {
           <form className="space-y-2" onSubmit={(e) => {
             e.preventDefault()
             if (!body.trim()) return
-            reply.mutate(body.trim(), { onSuccess: () => setBody(''), onError: (err) => toast.error(firstErrorMessage(err)) })
+            const sent = body
+            reply.mutate(sent.trim(), { onSuccess: () => setBody((current) => (current === sent ? '' : current)), onError: (err) => toast.error(firstErrorMessage(err)) })
           }}>
             <label htmlFor="reply" className={cn('text-sm font-medium', waiting && 'text-warning')}>{waiting ? 'We need a reply from you' : 'Add a message'}</label>
             <Textarea id="reply" rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
