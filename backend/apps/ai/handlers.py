@@ -7,10 +7,14 @@ from apps.core import events
 def triage_new_ticket(event: events.Event) -> None:
     from apps.tickets.models import Ticket
 
-    from .services import TRIAGE_KINDS, ai_enabled, org_setting, request_ticket_analysis
+    from .services import TRIAGE_KINDS, ai_enabled, autopilot_enabled, org_setting, request_ticket_analysis
+    from .tasks import autopilot
 
     ticket = Ticket.objects.select_related("organization").filter(pk=event.payload["ticket_id"]).first()
     if ticket is None or not ai_enabled(ticket.organization):
+        return
+    if autopilot_enabled(ticket.organization):  # one ordered pipeline instead of parallel suggestions
+        autopilot.delay(str(ticket.id))
         return
     kinds = [
         k

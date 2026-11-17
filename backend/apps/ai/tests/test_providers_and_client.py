@@ -220,7 +220,7 @@ def analysis(org):
 @pytest.fixture
 def use_provider(monkeypatch):
     def _use(provider):
-        monkeypatch.setattr(client, "get_provider", lambda: provider)
+        monkeypatch.setattr(client, "get_providers", lambda: [provider])
         return provider
 
     return _use
@@ -356,4 +356,74 @@ def test_reply_prompt_greets_by_name_or_neutrally():
     assert "Address the customer contact as: Sita Rai" in named
     anonymous = build_prompt("response_suggestion", {**base, "contact_name": ""})
     assert "neutral greeting" in anonymous and "as: the customer" not in anonymous
-    assert SPECS["response_suggestion"].version == "response-v2"
+    assert SPECS["response_suggestion"].version == "response-v3"
+
+
+# ---------------------------------------------------------------- fallbacks
+def _named(name, *outcomes):
+    p = ScriptedProvider(*outcomes)
+    p.name = name
+    return p
+
+
+@pytest.mark.django_db
+def test_falls_back_to_the_next_provider_and_records_it(analysis, monkeypatch, settings):
+    settings.AI_MAX_RETRIES = 1
+    settings.AI_RETRY_BACKOFF_SECONDS = 0
+    primary = _named("openai_compatible", ProviderUnavailable("503"), ProviderUnavailable("503"))
+    groq = _named("openai_compatible:groq", GOOD)
+    monkeypatch.setattr(client, "get_providers", lambda: [primary, groq])
+    result = client.run(analysis, "priority", {"title": "t", "description": "d"})
+    assert result.status == "completed" and result.provider == "openai_compatible:groq"
+    assert (primary.calls, groq.calls, result.attempts) == (2, 1, 3)
+
+
+@pytest.mark.django_db
+def test_config_errors_also_fall_back_but_refusals_do_not(analysis, monkeypatch, settings):
+    settings.AI_RETRY_BACKOFF_SECONDS = 0
+    retired = _named("openai_compatible", ProviderConfigError("HTTP 410: model reached its end of life"))
+    gemini = _named("openai_compatible:gemini", GOOD)
+    monkeypatch.setattr(client, "get_providers", lambda: [retired, gemini])
+    assert client.run(analysis, "priority", {}).provider == "openai_compatible:gemini"
+
+    from apps.ai.models import AIAnalysis
+
+    second = AIAnalysis.objects.create(organization=analysis.organization, kind="priority")
+    refuses = _named("openai_compatible", Refused("declined"))
+    backup = _named("openai_compatible:groq", GOOD)
+    monkeypatch.setattr(client, "get_providers", lambda: [refuses, backup])
+    out = client.run(second, "priority", {})
+    assert out.status == "failed" and "declined" in out.error and backup.calls == 0
+
+
+def test_fallback_presets_skip_missing_keys(settings):
+    from apps.ai.providers import get_providers
+
+    settings.AI_PROVIDER = "mock"
+    settings.AI_FALLBACKS = ["groq", "gemini", "nvidia"]
+    settings.GROQ_API_KEY, settings.GEMINI_API_KEY, settings.NVIDIA_API_KEY = "gsk_x", "", ""
+    settings.GROQ_MODEL = ""
+    names = [p.name for p in get_providers()]
+    assert names == ["mock", "openai_compatible:groq"]
+    assert get_providers()[1].model == "openai/gpt-oss-120b" and get_providers()[1].base_url.startswith(
+        "https://api.groq"
+    )
+
+
+def test_openai_compatible_sends_a_user_agent(monkeypatch):
+    _, sent_headers = None, {}
+    import io
+    import json as _json
+
+    from apps.ai.providers import openai_compatible as mod
+
+    def fake(req, timeout):
+        sent_headers.update(dict(req.header_items()))
+        body = {"choices": [{"message": {"content": '{"priority": "high"}'}, "finish_reason": "stop"}]}
+        return io.BytesIO(_json.dumps(body).encode())
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake)
+    mod.OpenAICompatibleProvider(
+        api_key="k", model="m", base_url="https://api.groq.com/openai/v1", label="groq"
+    ).complete_json(REQ, timeout=5)
+    assert sent_headers["User-agent"].startswith("ATT-Platform")

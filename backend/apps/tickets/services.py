@@ -523,3 +523,51 @@ def apply_field_change(*, ticket: Ticket, field: str, value, actor=None, request
     )
     _publish("ticket.updated", ticket, fields=[field], by_ai=actor is None)
     return ticket
+
+
+AI_REPLY_FOOTER = "\n\n— This first reply was written by our automated assistant. A member of our team will follow up."
+
+
+@transaction.atomic
+def post_ai_reply(*, ticket: Ticket, body: str) -> TicketComment | None:
+    """
+    Public reply written and sent by the AI autopilot (no human author). Labelled in the text, the
+    comment source and the history. It does NOT count as the SLA first response: that stays a
+    person's reply.
+    """
+    ticket = Ticket.objects.select_for_update().get(pk=ticket.pk)
+    body = body.strip()[:4000]
+    if not body or ticket.archived_at or ticket.status == TicketStatus.CLOSED:
+        return None
+    comment = TicketComment.objects.create(
+        ticket=ticket,
+        author=None,
+        body=body + AI_REPLY_FOOTER,
+        visibility=TicketComment.Visibility.PUBLIC,
+        source=TicketComment.Source.AI_AUTO,
+    )
+    _history(
+        ticket,
+        None,
+        "commented",
+        new={"comment_id": str(comment.id), "visibility": "public"},
+        actor_type=TicketHistory.ActorType.AI,
+    )
+    Ticket.objects.filter(pk=ticket.pk).update(updated_at=timezone.now())
+    audit.record(
+        "ticket.commented",
+        organization=ticket.organization,
+        target=ticket,
+        changes={"comment_id": str(comment.id), "by": "ai"},
+        actor_type="ai",
+    )
+    _publish(
+        "ticket.commented",
+        ticket,
+        comment_id=str(comment.id),
+        visibility="public",
+        by_customer=False,
+        actor_id=None,
+        by_ai=True,
+    )
+    return comment

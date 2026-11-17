@@ -24,7 +24,7 @@ from apps.organizations.models import Membership
 from apps.organizations.services import next_sequence_value
 from apps.organizations.tenancy import TenantContext
 from apps.tickets import services as ticket_services
-from apps.tickets.models import Ticket, TicketComment
+from apps.tickets.models import Ticket, TicketAssignment, TicketComment
 
 from .lifecycle import CANCELLABLE_FROM, TECHNICIAN_DECLINE_FROM, TECHNICIAN_STEPS
 from .models import (
@@ -164,13 +164,16 @@ def _lock(wo: WorkOrder) -> WorkOrder:
 @transaction.atomic
 def assign_technician(
     *,
-    tenant: TenantContext,
+    tenant: TenantContext | None,
     work_order: WorkOrder,
     technician: Technician | None,
     request=None,
     warnings: list[str] | None = None,
 ) -> WorkOrder:
-    """Assign, reassign or unassign. Scheduling advisories are appended to `warnings` if given."""
+    """
+    Assign, reassign or unassign. Scheduling advisories are appended to `warnings` if given.
+    `tenant=None` means the AI autopilot is acting (attributed as AI in logs, history and audit).
+    """
     wo = _lock(work_order)
     if wo.status in (WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED):
         raise DomainError("Completed or cancelled work orders cannot be reassigned.")
@@ -189,8 +192,10 @@ def assign_technician(
     wo.technician = technician
     wo.status = WorkOrderStatus.ASSIGNED if technician else WorkOrderStatus.CREATED
     wo.save(update_fields=["technician", "status", "scheduled_start", "scheduled_end", "updated_at"])
-    actor = tenant.membership.user
-    _log(wo, actor, old_status, wo.status, note=f"Assigned to {technician}" if technician else "Unassigned")
+    actor = tenant.membership.user if tenant else None
+    by_ai = tenant is None
+    note = f"Assigned to {technician}" if technician else "Unassigned"
+    _log(wo, actor, old_status, wo.status, note=f"{note} (by AI)" if by_ai else note)
     # Keep the ticket's technician in step with its active work order.
     if wo.ticket_id and wo.ticket.status != "closed" and not wo.ticket.archived_at:
         ticket_services.assign(
@@ -199,10 +204,13 @@ def assign_technician(
             ticket=wo.ticket,
             technician_id=technician.user_id if technician else None,
             request=request,
+            source=TicketAssignment.Source.AI_AUTO if by_ai else TicketAssignment.Source.MANUAL,
         )
     audit.record(
         "work_order.assigned",
         request=request,
+        organization=wo.organization,
+        actor_type="ai" if by_ai else None,
         target=wo,
         changes={
             "technician": {"from": str(old_tech) if old_tech else None, "to": str(technician) if technician else None}
@@ -213,7 +221,7 @@ def assign_technician(
         wo,
         technician_user_id=str(technician.user_id) if technician else None,
         previous_technician_user_id=str(old_tech.user_id) if old_tech else None,
-        actor_id=str(actor.pk),
+        actor_id=str(actor.pk) if actor else None,
     )
     return wo
 
@@ -538,3 +546,45 @@ def purge_old_locations() -> int:
     cutoff = timezone.now() - timedelta(days=LOCATION_RETENTION_DAYS)
     deleted, _ = TechnicianLocation.objects.filter(recorded_at__lt=cutoff).delete()
     return deleted
+
+
+@transaction.atomic
+def dispatch_by_ai(*, ticket: Ticket) -> WorkOrder | None:
+    """
+    AI autopilot: create a work order for the ticket and assign the best available technician
+    (skills for the category, availability, workload). Returns None when the ticket already has an
+    open work order or nobody suitable is available, leaving it to dispatch.
+    """
+    from .models import ACTIVE_WORK_ORDER_STATUSES
+    from .selectors import rank_technicians
+
+    open_statuses = set(ACTIVE_WORK_ORDER_STATUSES) | {WorkOrderStatus.CREATED}
+    if WorkOrder.objects.filter(ticket=ticket, status__in=open_statuses).exists():
+        return None
+    candidates = rank_technicians(ticket.organization, category_id=ticket.category_id, limit=3)
+    top = next((c for c in candidates if not c.blocked_reason and c.matched_skills), None)
+    if top is None:
+        return None
+    org, customer = ticket.organization, ticket.customer
+    wo = WorkOrder.objects.create(
+        organization=org,
+        number=next_sequence_value(org, "work_order"),
+        ticket=ticket,
+        customer=customer,
+        asset=ticket.asset,
+        title=ticket.title[:200],
+        description=ticket.description,
+        priority=ticket.priority,
+        service_address=", ".join(filter(None, [customer.address_line1, customer.city])),
+        created_by=None,
+    )
+    _log(wo, None, "", WorkOrderStatus.CREATED, note="Created by the AI autopilot")
+    audit.record(
+        "work_order.created",
+        organization=org,
+        target=wo,
+        changes={"reference": wo.reference, "by": "ai"},
+        actor_type="ai",
+    )
+    _publish("work_order.created", wo)
+    return assign_technician(tenant=None, work_order=wo, technician=Technician.objects.get(pk=top.technician_id))

@@ -24,12 +24,14 @@ from .base import (
 class OpenAICompatibleProvider:
     name = "openai_compatible"
 
-    def __init__(self, *, api_key: str, model: str, base_url: str):
+    def __init__(self, *, api_key: str, model: str, base_url: str, label: str = ""):
         if not base_url or not model:
             raise ProviderConfigError("AI_BASE_URL and AI_MODEL are required for the openai_compatible provider.")
         if not base_url.startswith(("https://", "http://")):
             raise ProviderConfigError("AI_BASE_URL must be an http(s) URL.")
         self.api_key, self.model, self.base_url = api_key, model, base_url.rstrip("/")
+        if label:  # e.g. "groq": shows which provider answered and keeps a circuit breaker per provider
+            self.name = f"openai_compatible:{label}"
 
     def complete_json(self, request: AIRequest, *, timeout: float) -> ProviderResult:
         body = {
@@ -50,6 +52,8 @@ class OpenAICompatibleProvider:
             method="POST",
             headers={
                 "Content-Type": "application/json",
+                # Some providers (Groq, behind Cloudflare) refuse urllib's default User-Agent with HTTP 403.
+                "User-Agent": "ATT-Platform/1",
                 **({"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}),
             },
         )

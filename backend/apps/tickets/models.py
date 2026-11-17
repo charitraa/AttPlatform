@@ -150,6 +150,7 @@ class TicketComment(BaseModel):
         CUSTOMER = "customer", "Customer"
         SYSTEM = "system", "System"
         AI_SUGGESTION = "ai_suggestion", "AI suggestion (accepted)"
+        AI_AUTO = "ai_auto", "AI (automatic reply)"
 
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="comments")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")

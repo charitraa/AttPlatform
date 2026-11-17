@@ -30,3 +30,14 @@ def generate_daily_insights() -> int:
             request_insights(organization=org, trigger="schedule")
             count += 1
     return count
+
+
+@shared_task(name="ai.autopilot", queue="ai", acks_late=True)
+def autopilot(ticket_id: str) -> dict:
+    """Run the AI autopilot for a new ticket (see services.run_autopilot)."""
+    from apps.tickets.models import Ticket
+
+    from .services import run_autopilot
+
+    ticket = Ticket.objects.select_related("organization").filter(pk=ticket_id).first()
+    return run_autopilot(ticket) if ticket else {}

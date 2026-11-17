@@ -93,9 +93,12 @@ SPECS: dict[str, PromptSpec] = {
     ),
     "response_suggestion": PromptSpec(
         "response_suggestion",
-        "response-v2",  # v2: neutral greeting when no contact name is known (v1 produced "Dear the customer")
+        # v2: neutral greeting when no contact name is known. v3: only claims actions listed in <actions_taken>.
+        "response-v3",
         "Draft a reply from a support agent to the customer. Be warm, specific and honest; never promise times or "
-        "fixes that are not supported by the ticket. Do not mention internal processes. Use the provided "
+        "fixes that are not supported by the ticket. Never say that someone has been sent, alerted or assigned, or "
+        "that anything has been arranged, unless it appears in <actions_taken>; if <actions_taken> is empty or "
+        "missing, say only that the team has the request. Do not mention internal processes. Use the provided "
         f"knowledge articles when relevant and list the ones you used. {_UNTRUSTED}",
         _obj({"draft": STR, "tone": STR, "cited_article_ids": STR_LIST}),
         effort="medium",
@@ -178,6 +181,7 @@ def build_prompt(capability: str, context: dict) -> str:
                 tag("ticket", {k: c.get(k) for k in ("title", "description", "status")}),
                 tag("conversation", c.get("comments", [])),
                 tag("articles", c.get("articles", [])),
+                tag("actions_taken", c.get("actions_taken", [])),
                 (
                     f"Address the customer contact as: {c['contact_name']}"
                     if c.get("contact_name")

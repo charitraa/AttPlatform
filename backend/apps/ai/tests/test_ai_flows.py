@@ -146,7 +146,7 @@ def test_routing_works_when_explanations_fail(new_ticket, settings, monkeypatch)
             raise ProviderUnavailable("offline")
 
     settings.AI_MAX_RETRIES = 0
-    monkeypatch.setattr(client, "get_provider", lambda: Down())
+    monkeypatch.setattr(client, "get_providers", lambda: [Down()])
     ticket = new_ticket()
     assert AIAnalysis.objects.get(ticket=ticket, kind="classification").status == "failed"
     routing = AIAnalysis.objects.get(ticket=ticket, kind="routing")
@@ -330,3 +330,15 @@ def test_routing_prefers_front_line_roles_over_admins(new_ticket, setup, admin):
     names = [c["name"] for c in AIAnalysis.objects.get(ticket=ticket, kind="routing").output["agents"]]
     assert admin.user.full_name not in names
     assert setup["agent"].user.full_name in names
+
+
+def test_auto_routing_assigns_even_when_candidates_are_close(org, new_ticket, settings, setup):
+    """Low routing confidence no longer leaves a ticket unassigned under "auto"."""
+    org.settings = {"routing_policy": "auto"}
+    org.save()
+    settings.AI_AUTO_APPLY_MIN_CONFIDENCE = 0.99  # far above any routing confidence
+    ticket = new_ticket()
+    ticket.refresh_from_db()
+    assert ticket.assigned_agent is not None
+    rec = AIRecommendation.objects.get(ticket=ticket, type="assignee")
+    assert rec.status == "auto_applied" and float(rec.confidence) < 0.99

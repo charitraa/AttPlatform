@@ -649,3 +649,19 @@ operation IDs). The published Swagger/ReDoc docs now carry real types.
 - WhatsApp template `att_notification` was still pending Meta review.
 - Single-host Compose; for HA, move PostgreSQL/Redis to managed services and run several `backend` replicas.
 - Customers still receive `due_at` on the staff tickets API they can call directly; the portal API exposes no SLA fields.
+
+## Follow-up: AI autopilot and provider fallbacks (2026-11-17)
+
+- AI provider chain NVIDIA → Groq → Gemini with per-provider retries and circuit breakers (refusals are
+  not retried elsewhere). Verified live: Groq answered when the primary failed.
+- Autopilot switches (Organization settings → AI autopilot): set category and priority, reply to the
+  customer, dispatch a technician, plus "AI assigns automatically" routing. One ordered pipeline; each
+  step labelled AI; the reply states only facts read back from the database.
+- Found and fixed live: the first version's reply claimed an engineer had been alerted before the dispatch
+  step had run. Dispatch now runs first and the reply may only mention recorded actions.
+- Agent auto-assignment waits for a person when routing confidence is low (60 % in the demo, where agents
+  have similar workloads), by design.
+- Tests: 405 backend (fallback chain, autopilot end to end, each switch alone, no reply to staff tickets or
+  twice, dispatch without a suitable technician, truthful reply facts), 106 frontend.
+- Not done: AI replies to tickets that arrived by email are visible in the portal but not emailed back
+  to the sender.

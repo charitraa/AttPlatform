@@ -11,6 +11,9 @@ export const organizationSchema = z.object({
   settings: z.object({
     routing_policy: z.enum(['manual', 'recommend', 'auto']),
     ai_enabled: z.boolean(),
+    ai_auto_triage: z.boolean().default(false),
+    ai_auto_reply: z.boolean().default(false),
+    ai_auto_dispatch: z.boolean().default(false),
     ticket_auto_close_days: z.number(),
   }),
   created_at: z.string(),

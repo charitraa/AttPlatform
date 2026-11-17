@@ -113,11 +113,12 @@ export function Conversation({ ticket }: { ticket: Ticket }) {
             const internal = c.visibility === 'internal'
             return (
               <li key={c.id} className={cn('flex gap-3 rounded-lg border p-3', internal && 'border-warning/40 bg-warning/5')}>
-                <Avatar className="size-8"><AvatarFallback className="text-xs">{initials(c.author?.full_name ?? 'System')}</AvatarFallback></Avatar>
+                <Avatar className="size-8"><AvatarFallback className="text-xs">{initials(c.author?.full_name ?? (c.source === 'ai_auto' ? 'AI' : 'System'))}</AvatarFallback></Avatar>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                    <span className="font-medium">{c.author?.full_name ?? 'System'}</span>
+                    <span className="font-medium">{c.author?.full_name ?? (c.source === 'ai_auto' ? 'AI assistant' : 'System')}</span>
                     {c.source === 'customer' && <span className="text-xs text-muted-foreground">Customer</span>}
+                    {c.source === 'ai_auto' && <span className="text-xs text-muted-foreground">Automatic reply</span>}
                     {internal && <span className="inline-flex items-center gap-1 text-xs font-medium text-warning"><Lock className="size-3" aria-hidden /> Internal note</span>}
                     <time className="text-xs text-muted-foreground" dateTime={c.created_at} title={formatDateTime(c.created_at)}>{formatRelative(c.created_at)}</time>
                   </div>

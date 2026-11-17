@@ -291,6 +291,14 @@ AI_TIMEOUT_SECONDS = env.float("AI_TIMEOUT_SECONDS", default=30.0)
 AI_MAX_RETRIES = env.int("AI_MAX_RETRIES", default=3)
 AI_RETRY_BACKOFF_SECONDS = env.float("AI_RETRY_BACKOFF_SECONDS", default=0.5)
 AI_AUTO_APPLY_MIN_CONFIDENCE = env.float("AI_AUTO_APPLY_MIN_CONFIDENCE", default=0.85)
+# Tried in order when the primary provider is unavailable: groq, gemini, nvidia (keys below).
+AI_FALLBACKS = env.list("AI_FALLBACKS", default=[])
+GROQ_API_KEY = env("GROQ_API_KEY", default="")
+GROQ_MODEL = env("GROQ_MODEL", default="")
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="")
+NVIDIA_API_KEY = env("NVIDIA_API_KEY", default="")
+NVIDIA_MODEL = env("NVIDIA_MODEL", default="")
 
 # Symmetric key(s) for encrypting integration credentials at rest (Fernet).
 FIELD_ENCRYPTION_KEYS = env.list("FIELD_ENCRYPTION_KEYS", default=[])

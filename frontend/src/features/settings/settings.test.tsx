@@ -30,12 +30,12 @@ describe('Organization settings', () => {
     await user.clear(name)
     await user.type(name, 'Acme Ltd')
     await user.selectOptions(screen.getByLabelText('Ticket routing'), 'auto')
-    expect(screen.getByText(/AI assigns automatically when its confidence/)).toBeInTheDocument()
+    expect(screen.getByText(/AI always assigns the best-ranked agent/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await waitFor(() =>
       expect(body).toEqual({
         name: 'Acme Ltd', timezone: 'UTC', locale: 'en',
-        settings: { routing_policy: 'auto', ai_enabled: true, ticket_auto_close_days: 7 },
+        settings: { routing_policy: 'auto', ai_enabled: true, ai_auto_triage: false, ai_auto_reply: false, ai_auto_dispatch: false, ticket_auto_close_days: 7 },
       }),
     )
   })
@@ -93,5 +93,27 @@ describe('Profile settings', () => {
     await user.click(screen.getByRole('button', { name: 'Update password' }))
     expect(await screen.findByText('Your current password is incorrect.')).toBeInTheDocument()
     expect(screen.getByLabelText('Current password')).toHaveAttribute('aria-invalid', 'true')
+  })
+})
+
+describe('AI autopilot settings', () => {
+  it('saves the autopilot switches with the other settings', async () => {
+    const user = userEvent.setup()
+    let saved: Record<string, unknown> | null = null
+    const org = { id: 'org-1', name: 'Acme Facilities', slug: 'acme', timezone: 'Asia/Kathmandu', locale: 'en', created_at: '2026-01-01T00:00:00Z',
+      settings: { routing_policy: 'recommend', ai_enabled: true, ai_auto_triage: false, ai_auto_reply: false, ai_auto_dispatch: false, ticket_auto_close_days: 7 } }
+    server.use(
+      http.get(`${API}/organization/`, () => HttpResponse.json(org)),
+      http.patch(`${API}/organization/`, async ({ request }) => {
+        saved = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ...org, settings: { ...org.settings, ...(saved.settings as object) } })
+      }),
+    )
+    renderRoute('/settings/organization', { user: makeMe() })
+    await user.click(await screen.findByLabelText('Reply to the customer'))
+    await user.click(screen.getByLabelText('Dispatch a technician'))
+    await user.selectOptions(screen.getByLabelText('Ticket routing'), 'auto')
+    await user.click(screen.getByRole('button', { name: /save/i }))
+    await waitFor(() => expect(saved?.settings).toMatchObject({ routing_policy: 'auto', ai_auto_reply: true, ai_auto_dispatch: true, ai_auto_triage: false }))
   })
 })

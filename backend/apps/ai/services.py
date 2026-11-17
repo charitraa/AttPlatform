@@ -10,8 +10,8 @@ Policies (Organization.settings):
   * ai_enabled (default true): master switch for automatic triggers.
   * ai_auto_triage (default false): auto-apply category/priority when confident and
     nobody has set them by hand.
-  * routing_policy: manual | recommend (default) | auto. "auto" assigns the top
-    candidate when routing confidence clears AI_AUTO_APPLY_MIN_CONFIDENCE.
+  * routing_policy: manual | recommend (default) | auto. "auto" always assigns the
+    top-ranked agent to unassigned tickets (a person can reassign at any time).
 """
 
 from __future__ import annotations
@@ -197,6 +197,8 @@ def _reuse_recent(analysis: AIAnalysis, context: dict) -> bool:
 
 def _run_simple(analysis: AIAnalysis) -> AIAnalysis:
     context = ticket_context(analysis.ticket, analysis.kind)
+    if analysis.kind == Capability.RESPONSE_SUGGESTION:  # what has really been done, so the reply can't overclaim
+        context["actions_taken"] = list((analysis.input or {}).get("actions_taken", []))
     if _reuse_recent(analysis, context):
         return analysis
     return client.run(analysis, analysis.kind, context)
@@ -368,10 +370,11 @@ def _run_routing(analysis: AIAnalysis) -> AIAnalysis:
             if ticket.assigned_agent_id
             else None,
         )
+        # "auto" always assigns the best-ranked agent: easy to change, and nobody is left unassigned.
+        # The confidence and reasoning stay on the recommendation for anyone who checks.
         if (
             org_setting(ticket.organization, "routing_policy", "recommend") == "auto"
             and ticket.assigned_agent_id is None
-            and confidence >= threshold()
         ):
             try:
                 ticket_services.assign(
@@ -632,3 +635,96 @@ def acceptance_stats(organization, days: int = 90) -> list[dict]:
             }
         )
     return out
+
+
+# ---------------------------------------------------------------- autopilot
+AUTOPILOT_SWITCHES = ("ai_auto_triage", "ai_auto_reply", "ai_auto_dispatch")
+
+
+def autopilot_enabled(organization) -> bool:
+    """True when any part of the autopilot is switched on for the organization."""
+    return any(org_setting(organization, k, False) for k in AUTOPILOT_SWITCHES) or (
+        org_setting(organization, "routing_policy", "recommend") == "auto"
+    )
+
+
+def run_autopilot(ticket: Ticket) -> dict:
+    """
+    The AI handles a new ticket end to end, in order, each step only when its switch is on:
+    category → priority (auto-applied when confident) → agent (routing_policy=auto) → first reply to
+    the customer → technician for on-site work. Every step is labelled AI in history and audit, and
+    each failure stops only that step.
+    """
+    org = ticket.organization
+    done: dict[str, object] = {}
+    for kind in TRIAGE_KINDS:  # sequential: routing and dispatch depend on the category just set
+        if kind == Capability.ROUTING and org_setting(org, "routing_policy", "recommend") == "manual":
+            continue
+        analysis = _create(org, kind, ticket=Ticket.objects.get(pk=ticket.pk), trigger="autopilot")
+        execute(analysis)
+        done[kind] = analysis.status
+    ticket = Ticket.objects.select_related("customer", "category", "organization").get(pk=ticket.pk)
+
+    if org_setting(org, "ai_auto_dispatch", False):  # before the reply, so the reply states facts, not hopes
+        done["dispatch"] = _autopilot_dispatch(ticket)
+        ticket = Ticket.objects.select_related("customer", "category", "organization").get(pk=ticket.pk)
+    if org_setting(org, "ai_auto_reply", False):
+        done["reply"] = _autopilot_reply(ticket, actions_taken=_actions_taken(ticket))
+    return done
+
+
+def _actions_taken(ticket: Ticket) -> list[str]:
+    """Facts the customer may be told, read back from the database (not from what the AI intended)."""
+    facts = []
+    if ticket.assigned_agent_id:
+        facts.append(f"The request has been assigned to {ticket.assigned_agent.first_name} on the support team.")
+    wo = (
+        ticket.work_orders.select_related("technician__user")
+        .exclude(status="cancelled")
+        .order_by("-created_at")
+        .first()
+    )
+    if wo and wo.technician_id:
+        facts.append(f"Technician {wo.technician.user.first_name} has been assigned to visit and has been notified.")
+    if ticket.priority in ("high", "critical"):
+        facts.append(f"The request is marked {ticket.priority} priority.")
+    return facts
+
+
+def _autopilot_reply(ticket: Ticket, actions_taken: list[str] | None = None) -> str:
+    """Send the AI's first reply to a customer-raised ticket, once, unless a person already answered."""
+    if ticket.channel == Ticket.Channel.STAFF:
+        return "skipped: raised by staff"
+    replied = ticket.comments.filter(visibility=TicketComment.Visibility.PUBLIC).exclude(
+        source=TicketComment.Source.CUSTOMER
+    )
+    if replied.exists():
+        return "skipped: already answered"
+    analysis = _create(
+        ticket.organization,
+        Capability.RESPONSE_SUGGESTION,
+        ticket=ticket,
+        trigger="autopilot",
+        params={"actions_taken": actions_taken or []},
+    )
+    execute(analysis)
+    draft = (analysis.output or {}).get("draft", "") if analysis.status == AIAnalysis.Status.COMPLETED else ""
+    if not draft.strip():
+        return f"skipped: no draft ({analysis.error or analysis.status})"
+    comment = ticket_services.post_ai_reply(ticket=ticket, body=draft)
+    return "sent" if comment else "skipped: ticket closed"
+
+
+def _autopilot_dispatch(ticket: Ticket) -> str:
+    """Create and assign a work order when the category needs a skilled technician on site."""
+    from apps.field_service import services as field_services
+
+    if not ticket.category_id or not ticket.category.required_skills.exists():
+        return "skipped: not on-site work"
+    if ticket.priority not in ("high", "critical") and not ticket.asset_id:
+        return "skipped: low priority without equipment"
+    try:
+        wo = field_services.dispatch_by_ai(ticket=ticket)
+    except (DomainError, exceptions.ValidationError) as exc:
+        return f"skipped: {exc}"
+    return f"dispatched {wo.reference} to {wo.technician}" if wo else "skipped: no suitable technician free"

@@ -183,3 +183,32 @@ recorded with `actor_type=ai` in ticket history and the audit log.
 - Every output includes `"is_mock": true` and reasoning prefixed `[mock]`.
 
 It is the default in development and the only provider used in tests.
+
+## Provider fallbacks (2026-11-17)
+
+`AI_FALLBACKS` lists OpenAI-compatible presets tried in order when the primary fails: `groq`
+(`openai/gpt-oss-120b`), `gemini` (`gemini-2.5-flash`), `nvidia` (Nemotron 3 Ultra). Each provider
+gets its own retries and circuit breaker; the analysis records which provider answered. Timeouts,
+rate limits, outages, unusable output and configuration errors (bad key, retired model) move on to the
+next provider; a **refusal does not** (it is respected, not shopped around). Verified live: with the
+primary key broken, Groq answered in 1.6 s. The provider sends a `User-Agent` (Groq's Cloudflare
+front refuses Python's default with HTTP 403).
+
+## Autopilot (2026-11-17)
+
+Organization settings switch on each action the AI may take by itself on new customer requests,
+run in order by one task (`ai.autopilot`):
+
+1. **Category and priority** (`ai_auto_triage`): applied when confidence ≥ `AI_AUTO_APPLY_MIN_CONFIDENCE`;
+   never overrides a priority a person chose.
+2. **Agent** (`routing_policy = auto`): the best-ranked agent is **always** assigned (no confidence bar, since it
+   is easy to reassign); the confidence and reasoning stay on the recommendation.
+3. **Technician** (`ai_auto_dispatch`): for high/critical requests in a category that requires a skill (or
+   with equipment), creates the work order and assigns the best available technician with that skill.
+4. **First reply** (`ai_auto_reply`): only for customer-raised tickets and only if nobody has answered. It is
+   written after dispatch and given the facts read back from the database (`<actions_taken>`), and
+   may claim nothing else (prompt `response-v3`). Marked as automated in the text, comment source
+   (`ai_auto`) and history. It does **not** count as the SLA first response.
+
+Everything is attributed to AI in ticket history, work-order log and audit. Verified live on NVIDIA
+Nemotron: a portal request was categorised, prioritised, dispatched and answered truthfully in 36 s.
